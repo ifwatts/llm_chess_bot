@@ -28,6 +28,9 @@ let statusElement = null;
 let moveHistoryElement = null;
 let resetButton = null;
 let moveHistory = [];
+let skillSlider = null;
+let skillLabel = null;
+let skillValue = null;
 
 // Initialize the board
 function initializeBoard() {
@@ -43,7 +46,18 @@ function initializeBoard() {
     // Initialize reset button
     resetButton = document.getElementById('reset-button');
     resetButton.addEventListener('click', resetGame);
-    
+
+    // Initialize skill slider
+    skillSlider = document.getElementById('skill-slider');
+    skillLabel = document.getElementById('skill-label');
+    skillValue = document.getElementById('skill-value');
+
+    if (skillSlider) {
+        skillSlider.addEventListener('input', handleSkillChange);
+        // Fetch initial skill level from server
+        fetchSkillLevel();
+    }
+
     // Create the squares
     // Note: We create the board from bottom to top (rank 1 to 8)
     // This ensures the board is oriented correctly with white at the bottom
@@ -512,6 +526,75 @@ function clearMoveHistory() {
     if (moveHistoryElement) {
         moveHistoryElement.innerHTML = '';
     }
+}
+
+// Skill level descriptions mapping
+function getSkillDescription(level) {
+    const descriptions = {
+        1: "Complete Beginner",
+        2: "Novice",
+        3: "Learning",
+        4: "Improving",
+        5: "Intermediate",
+        6: "Club Player",
+        7: "Strong Player",
+        8: "Advanced",
+        9: "Expert",
+        10: "Master"
+    };
+    return descriptions[level] || "Intermediate";
+}
+
+// Fetch current skill level from server
+async function fetchSkillLevel() {
+    try {
+        const response = await fetch(`${API_URL}/skill-level`);
+        if (response.ok) {
+            const data = await response.json();
+            updateSkillDisplay(data.skill_level, data.description);
+        }
+    } catch (error) {
+        console.error('Error fetching skill level:', error);
+    }
+}
+
+// Handle skill slider change
+async function handleSkillChange(event) {
+    const level = parseInt(event.target.value);
+    const description = getSkillDescription(level);
+
+    // Update UI immediately for responsive feel
+    updateSkillDisplay(level, description);
+
+    // Send to server
+    try {
+        const response = await fetch(`${API_URL}/skill-level`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ skill_level: level })
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            console.log(`Skill level set to ${data.skill_level}: ${data.description}`);
+            setStatus(`Computer skill level: ${data.description} (${data.skill_level})`);
+        } else {
+            console.error('Failed to set skill level');
+            setStatus('Error setting skill level');
+        }
+    } catch (error) {
+        console.error('Error setting skill level:', error);
+        setStatus('Error setting skill level');
+    }
+}
+
+// Update skill display elements
+function updateSkillDisplay(level, description) {
+    if (skillSlider) skillSlider.value = level;
+    if (skillValue) skillValue.textContent = level;
+    if (skillLabel) skillLabel.textContent = description;
 }
 
 // Initialize the board when the page loads
