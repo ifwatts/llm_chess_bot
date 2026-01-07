@@ -207,7 +207,7 @@ h1 {
     background-color: #ffffff;
     border-radius: 12px;
     width: 100%;
-    max-width: 800px;
+    max-width: 1200px;
     text-align: center;
     font-weight: 600;
     font-size: 1.1rem;
@@ -314,10 +314,18 @@ span.black {
     background-color: rgba(255, 255, 255, 0.95);
     border-radius: 8px;
     padding: 12px;
-    margin: 10px 0;
+    margin: 15px 0;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     width: 480px;
     min-height: 60px;
+}
+
+.white-captured {
+    margin-bottom: 20px;
+}
+
+.black-captured {
+    margin-top: 20px;
 }
 
 .captured-pieces h4 {
@@ -363,6 +371,7 @@ span.black {
 .board-wrapper {
     position: relative;
     display: inline-block;
+    margin: 0 30px;
 }
 
 .coordinate-label {
