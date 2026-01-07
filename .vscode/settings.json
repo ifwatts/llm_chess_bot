@@ -1,0 +1,6 @@
+{
+    "python.defaultInterpreterPath": "/Users/ifwatts/.pyenv/versions/3.10.0/bin/python",
+    "python.analysis.extraPaths": [],
+    "python.analysis.typeCheckingMode": "basic",
+    "python.languageServer": "Pylance"
+}
