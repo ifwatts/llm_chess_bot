@@ -1,23 +1,12 @@
-FROM alpine:3.18
-
-# Install dependencies
-RUN apk add --no-cache \
-    curl \
-    ca-certificates \
-    bash
-
-# Create directory for Ollama
-WORKDIR /app
-
-# Download and install Ollama
-RUN curl -L https://ollama.ai/download/ollama-linux-amd64 -o /usr/local/bin/ollama && \
-    chmod +x /usr/local/bin/ollama
+# Use official Ollama image from Docker Hub
+FROM docker.io/ollama/ollama:latest
 
 # Expose Ollama API port
 EXPOSE 11434
 
-# Set up entrypoint
-COPY entrypoint.sh /app/entrypoint.sh
-RUN chmod +x /app/entrypoint.sh
+# Copy entrypoint script
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
-ENTRYPOINT ["/app/entrypoint.sh"]
+# Use entrypoint script to auto-download model
+ENTRYPOINT ["/entrypoint.sh"]

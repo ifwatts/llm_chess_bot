@@ -71,19 +71,19 @@ docker-compose up -d
 docker-compose ps
 ```
 
-### 3. Download the LLM Model
+### 3. Automatic Model Download
 
-The first time you run the application, you need to pull the LLM model:
+The llama2 model (approximately 3.8GB) will be automatically downloaded on first startup. This may take several minutes depending on your internet connection. You can monitor the download progress:
 
 ```bash
 # For Podman
-podman exec -it llm_chess_bot-ollama-1 ollama pull llama2
+podman logs -f llm_chess_bot_ollama_1
 
 # For Docker
-docker exec -it llm_chess_bot-ollama-1 ollama pull llama2
+docker logs -f llm_chess_bot_ollama_1
 ```
 
-This download is approximately 3.8GB and may take several minutes depending on your internet connection.
+Wait until you see "Ollama is ready!" in the logs before proceeding.
 
 ### 4. Access the Application
 
@@ -131,7 +131,7 @@ podman-compose up -d
 
 ## Manual Setup (Without Containers)
 
-If you prefer to run without containers:
+If you prefer to run without containers (note: automated model download only works with containerized deployment):
 
 ### 1. Install Dependencies
 ```bash
@@ -249,8 +249,8 @@ llm_chess_bot/
 - **Port conflict**: Ensure port 5001 is not in use
 
 ### Can't Connect to Ollama
-- **Check Ollama container**: `podman logs llm_chess_bot-ollama-1`
-- **Verify model**: `podman exec -it llm_chess_bot-ollama-1 ollama list`
+- **Check Ollama container**: `podman logs llm_chess_bot_ollama_1`
+- **Verify model**: `podman exec -it llm_chess_bot_ollama_1 ollama list`
 - **Restart containers**: `podman-compose restart`
 
 ### AI Moves Are Slow
