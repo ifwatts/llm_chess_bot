@@ -9,7 +9,11 @@ body {
     min-height: 100vh;
     margin: 0;
     padding: 20px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background:
+        linear-gradient(135deg, rgba(102, 126, 234, 0.9) 0%, rgba(118, 75, 162, 0.9) 100%),
+        repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255,255,255,0.03) 10px, rgba(255,255,255,0.03) 20px),
+        repeating-linear-gradient(-45deg, transparent, transparent 10px, rgba(0,0,0,0.03) 10px, rgba(0,0,0,0.03) 20px);
+    background-attachment: fixed;
     color: #2d3748;
 }
 
@@ -57,8 +61,9 @@ h1 {
     border-radius: 12px;
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
     padding: 20px;
-    height: 480px;
-    overflow-y: auto;
+    max-height: 600px;
+    display: flex;
+    flex-direction: column;
 }
 
 .right-panel h2 {
@@ -172,12 +177,13 @@ h1 {
 }
 
 .move-history {
-    height: calc(100% - 40px);
+    flex: 1;
     overflow-y: auto;
     border: 1px solid #e2e8f0;
     padding: 10px;
     border-radius: 8px;
     background-color: #f7fafc;
+    min-height: 0;
 }
 
 .move-entry {
@@ -274,7 +280,7 @@ h1 {
 }
 
 .ai-move-flash {
-    animation: flashMove 1.5s ease-out;
+    animation: flashMove 5s ease-out;
 }
 
 @keyframes flashMove {
@@ -301,6 +307,56 @@ span.black {
     color: black;
     text-shadow: 0 0 2px white;
     background-color: transparent;
+}
+
+/* Captured pieces */
+.captured-pieces {
+    background-color: rgba(255, 255, 255, 0.95);
+    border-radius: 8px;
+    padding: 12px;
+    margin: 10px 0;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    width: 480px;
+    min-height: 60px;
+}
+
+.captured-pieces h4 {
+    margin: 0 0 8px 0;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #4a5568;
+    text-align: center;
+}
+
+.captured-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: center;
+    min-height: 40px;
+    align-items: center;
+}
+
+.captured-piece {
+    font-size: 28px;
+    line-height: 1;
+    transition: transform 0.2s ease;
+    animation: captureAppear 0.3s ease-out;
+}
+
+.captured-piece:hover {
+    transform: scale(1.2);
+}
+
+@keyframes captureAppear {
+    from {
+        opacity: 0;
+        transform: scale(0.5) rotate(180deg);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) rotate(0deg);
+    }
 }
 
 /* Coordinate labels */

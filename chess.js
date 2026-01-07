@@ -50,6 +50,7 @@ let skillValue = null;
 let lastMoveSquares = [];
 let loadingOverlay = null;
 let boardWrapper = null;
+let capturedPieces = { white: [], black: [] };
 
 // Initialize the board
 function initializeBoard() {
@@ -147,7 +148,12 @@ async function fetchBoardState() {
 }
 
 // Update the board display based on the current game state
-function updateBoard() {
+function updateBoard(previousPieces = null) {
+    // Detect captured pieces if we have previous state
+    if (previousPieces && gameState && gameState.pieces) {
+        detectCapturedPieces(previousPieces, gameState.pieces);
+    }
+
     // Clear all pieces
     document.querySelectorAll('.square span').forEach(span => span.remove());
 
@@ -177,6 +183,54 @@ function updateBoard() {
     });
 
     selectedSquare = null;
+}
+
+// Detect captured pieces by comparing board states
+function detectCapturedPieces(previousPieces, currentPieces) {
+    // Find pieces that existed before but don't exist now
+    for (const square in previousPieces) {
+        const prevPiece = previousPieces[square];
+
+        // Check if piece is missing or replaced by opposite color
+        if (!currentPieces[square] || currentPieces[square].color !== prevPiece.color) {
+            // This piece was captured
+            const capturingColor = prevPiece.color === 'white' ? 'black' : 'white';
+
+            // Don't add if already in captured list
+            const pieceSymbol = pieceSymbols[prevPiece.type];
+            if (!capturedPieces[capturingColor].includes(pieceSymbol)) {
+                capturedPieces[capturingColor].push(pieceSymbol);
+                updateCapturedDisplay();
+            }
+        }
+    }
+}
+
+// Update the captured pieces display
+function updateCapturedDisplay() {
+    // Update white's captures (black pieces)
+    const whiteCapturedList = document.querySelector('#white-captured .captured-list');
+    if (whiteCapturedList) {
+        whiteCapturedList.innerHTML = '';
+        capturedPieces.white.forEach(piece => {
+            const pieceSpan = document.createElement('span');
+            pieceSpan.className = 'captured-piece';
+            pieceSpan.textContent = piece;
+            whiteCapturedList.appendChild(pieceSpan);
+        });
+    }
+
+    // Update black's captures (white pieces)
+    const blackCapturedList = document.querySelector('#black-captured .captured-list');
+    if (blackCapturedList) {
+        blackCapturedList.innerHTML = '';
+        capturedPieces.black.forEach(piece => {
+            const pieceSpan = document.createElement('span');
+            pieceSpan.className = 'captured-piece';
+            pieceSpan.textContent = piece;
+            blackCapturedList.appendChild(pieceSpan);
+        });
+    }
 }
 
 // Update the game status display
@@ -404,7 +458,7 @@ async function makeMove(from, to) {
             addMoveToHistory(moveUCI, 'white', previousPieces);
         }
 
-        updateBoard();
+        updateBoard(previousPieces);
         updateStatus();
 
         // If the computer made a move in response, add it to the history and track it
@@ -426,7 +480,7 @@ async function makeMove(from, to) {
                 // Add flash animation to AI move squares
                 animateAIMove(fromSquare, toSquare);
 
-                updateBoard();
+                updateBoard(beforeComputerMove);
             }
         }
 
@@ -600,12 +654,12 @@ function animateAIMove(fromSquare, toSquare) {
 
     if (fromElement) {
         fromElement.classList.add('ai-move-flash');
-        setTimeout(() => fromElement.classList.remove('ai-move-flash'), 1500);
+        setTimeout(() => fromElement.classList.remove('ai-move-flash'), 5000);
     }
 
     if (toElement) {
         toElement.classList.add('ai-move-flash');
-        setTimeout(() => toElement.classList.remove('ai-move-flash'), 1500);
+        setTimeout(() => toElement.classList.remove('ai-move-flash'), 5000);
     }
 }
 
@@ -724,6 +778,10 @@ async function resetGame() {
 
         // Clear last move tracking
         lastMoveSquares = [];
+
+        // Clear captured pieces
+        capturedPieces = { white: [], black: [] };
+        updateCapturedDisplay();
 
         updateBoard();
         updateStatus();

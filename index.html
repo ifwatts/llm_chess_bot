@@ -10,8 +10,16 @@
     <h1>Interactive Chessboard</h1>
     <div class="game-container">
         <div class="left-panel">
+            <div class="captured-pieces white-captured" id="white-captured">
+                <h4>Captured by White</h4>
+                <div class="captured-list"></div>
+            </div>
             <div class="board-wrapper" id="board-wrapper">
                 <div class="chessboard" id="chessboard"></div>
+            </div>
+            <div class="captured-pieces black-captured" id="black-captured">
+                <h4>Captured by Black</h4>
+                <div class="captured-list"></div>
             </div>
             <div class="controls">
                 <button id="reset-button">Reset Game</button>
