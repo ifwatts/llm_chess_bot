@@ -77,10 +77,10 @@ The llama2 model (approximately 3.8GB) will be automatically downloaded on first
 
 ```bash
 # For Podman
-podman logs -f llm_chess_bot-ollama-1
+podman logs -f llm_chess_bot_ollama_1
 
 # For Docker
-docker logs -f llm_chess_bot-ollama-1
+docker logs -f llm_chess_bot_ollama_1
 ```
 
 Wait until you see "Ollama is ready!" in the logs before proceeding.
@@ -249,8 +249,8 @@ llm_chess_bot/
 - **Port conflict**: Ensure port 5001 is not in use
 
 ### Can't Connect to Ollama
-- **Check Ollama container**: `podman logs llm_chess_bot-ollama-1`
-- **Verify model**: `podman exec -it llm_chess_bot-ollama-1 ollama list`
+- **Check Ollama container**: `podman logs llm_chess_bot_ollama_1`
+- **Verify model**: `podman exec -it llm_chess_bot_ollama_1 ollama list`
 - **Restart containers**: `podman-compose restart`
 
 ### AI Moves Are Slow
