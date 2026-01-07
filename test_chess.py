@@ -105,18 +105,176 @@ class ChessGameTest(unittest.TestCase):
         """Test pawn promotion"""
         # This is a simplified test that sets up a position where a pawn can be promoted
         # In a real test, you would need to make all the moves to get to this position
-        
+
         # For now, we'll just verify that the API handles pawn promotion correctly
         # by checking if the promotion move is in the legal moves list when appropriate
-        
+
         response = requests.get(f"{self.API_URL}/board")
         self.assertEqual(response.status_code, 200, "Failed to get board state")
-        
+
         # In a real test, you would check for promotion moves in the legal_moves list
         # and then make a promotion move and verify the result
-        
+
         print("\nPawn promotion test - This is a placeholder for a more comprehensive test")
         print("In a real test, you would verify that pawns can be promoted correctly")
+
+    def test_skill_level_get(self):
+        """Test getting the current skill level"""
+        print("\nTesting skill level GET endpoint...")
+
+        response = requests.get(f"{self.API_URL}/skill-level")
+        self.assertEqual(response.status_code, 200, "Failed to get skill level")
+
+        data = response.json()
+        self.assertIn('skill_level', data, "Response should contain skill_level")
+        self.assertIn('description', data, "Response should contain description")
+
+        # Skill level should be between 1 and 10
+        skill_level = data['skill_level']
+        self.assertGreaterEqual(skill_level, 1, "Skill level should be at least 1")
+        self.assertLessEqual(skill_level, 10, "Skill level should be at most 10")
+
+        print(f"Current skill level: {skill_level} - {data['description']}")
+
+    def test_skill_level_set_valid(self):
+        """Test setting skill level with valid values"""
+        print("\nTesting skill level SET endpoint with valid values...")
+
+        # Test setting different skill levels
+        test_levels = [1, 5, 10]
+
+        for level in test_levels:
+            with self.subTest(level=level):
+                response = requests.post(
+                    f"{self.API_URL}/skill-level",
+                    json={"skill_level": level}
+                )
+
+                self.assertEqual(response.status_code, 200, f"Failed to set skill level to {level}")
+
+                data = response.json()
+                self.assertEqual(data['skill_level'], level, f"Skill level should be {level}")
+                self.assertIn('description', data, "Response should contain description")
+                self.assertTrue(data['success'], "Response should indicate success")
+
+                print(f"Set skill level to {level}: {data['description']}")
+
+                # Verify the skill level persists
+                get_response = requests.get(f"{self.API_URL}/skill-level")
+                get_data = get_response.json()
+                self.assertEqual(get_data['skill_level'], level, "Skill level should persist")
+
+    def test_skill_level_set_invalid(self):
+        """Test setting skill level with invalid values"""
+        print("\nTesting skill level SET endpoint with invalid values...")
+
+        # Test invalid values
+        invalid_values = [0, 11, -1, 100]
+
+        for value in invalid_values:
+            with self.subTest(value=value):
+                response = requests.post(
+                    f"{self.API_URL}/skill-level",
+                    json={"skill_level": value}
+                )
+
+                self.assertEqual(
+                    response.status_code, 400,
+                    f"Should reject invalid skill level {value}"
+                )
+
+                data = response.json()
+                self.assertIn('error', data, "Response should contain error message")
+                print(f"Correctly rejected invalid value {value}: {data['error']}")
+
+    def test_skill_level_set_invalid_format(self):
+        """Test setting skill level with invalid format"""
+        print("\nTesting skill level SET endpoint with invalid format...")
+
+        # Test invalid formats
+        invalid_formats = ["abc", None, {"nested": "object"}]
+
+        for value in invalid_formats:
+            with self.subTest(value=value):
+                response = requests.post(
+                    f"{self.API_URL}/skill-level",
+                    json={"skill_level": value}
+                )
+
+                self.assertEqual(
+                    response.status_code, 400,
+                    f"Should reject invalid format {value}"
+                )
+
+                data = response.json()
+                self.assertIn('error', data, "Response should contain error message")
+                print(f"Correctly rejected invalid format {type(value).__name__}")
+
+    def test_skill_level_descriptions(self):
+        """Test that all skill levels have appropriate descriptions"""
+        print("\nTesting skill level descriptions...")
+
+        expected_descriptions = {
+            1: "Complete Beginner",
+            2: "Novice",
+            3: "Learning",
+            4: "Improving",
+            5: "Intermediate",
+            6: "Club Player",
+            7: "Strong Player",
+            8: "Advanced",
+            9: "Expert",
+            10: "Master"
+        }
+
+        for level, expected_desc in expected_descriptions.items():
+            with self.subTest(level=level):
+                response = requests.post(
+                    f"{self.API_URL}/skill-level",
+                    json={"skill_level": level}
+                )
+
+                self.assertEqual(response.status_code, 200, f"Failed to set skill level to {level}")
+
+                data = response.json()
+                self.assertEqual(
+                    data['description'],
+                    expected_desc,
+                    f"Description for level {level} should be '{expected_desc}'"
+                )
+                print(f"Level {level}: {data['description']} ✓")
+
+    def test_game_with_different_skill_levels(self):
+        """Test that games can be played with different skill levels"""
+        print("\nTesting game play with different skill levels...")
+
+        skill_levels = [1, 5, 10]
+
+        for skill_level in skill_levels:
+            with self.subTest(skill_level=skill_level):
+                # Set skill level
+                set_response = requests.post(
+                    f"{self.API_URL}/skill-level",
+                    json={"skill_level": skill_level}
+                )
+                self.assertEqual(set_response.status_code, 200, "Failed to set skill level")
+
+                # Reset game
+                reset_response = requests.post(f"{self.API_URL}/reset")
+                self.assertEqual(reset_response.status_code, 200, "Failed to reset game")
+
+                # Make a simple opening move
+                move_response = requests.post(
+                    f"{self.API_URL}/move",
+                    json={"move": "e2e4", "test_mode": True}
+                )
+
+                self.assertEqual(
+                    move_response.status_code, 200,
+                    f"Move should succeed with skill level {skill_level}"
+                )
+
+                print(f"Successfully played move with skill level {skill_level}")
 
 if __name__ == "__main__":
     unittest.main()

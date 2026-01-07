@@ -1,0 +1,11 @@
+{
+    "python.defaultInterpreterPath": "/Users/ifwatts/.pyenv/versions/3.10.0/bin/python",
+    "python.analysis.extraPaths": [
+        "/Users/ifwatts/.pyenv/versions/3.10.0/lib/python3.10/site-packages"
+    ],
+    "python.analysis.typeCheckingMode": "off",
+    "python.analysis.diagnosticMode": "workspace",
+    "python.analysis.autoImportCompletions": true,
+    "python.languageServer": "Pylance",
+    "python.analysis.useLibraryCodeForTypes": true
+}

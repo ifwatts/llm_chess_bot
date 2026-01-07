@@ -10,7 +10,8 @@ CORS(app)  # Enable CORS for all routes
 # Initialize game state
 chess_board = ChessBoard()
 human_player = HumanPlayer('white')
-computer_player = ComputerPlayer('black')
+# Default skill level is 5 (intermediate)
+computer_player = ComputerPlayer('black', skill_level=5)
 
 def add_pieces_to_state(state):
     """Add piece positions to the state for the frontend"""
@@ -90,6 +91,56 @@ def reset_game():
     # Add piece positions for the frontend
     state = add_pieces_to_state(state)
     return jsonify(state)
+
+@app.route('/skill-level', methods=['GET'])
+def get_skill_level():
+    """Get the current computer player skill level"""
+    return jsonify({
+        'skill_level': computer_player.skill_level,
+        'description': get_skill_description(computer_player.skill_level)
+    })
+
+@app.route('/skill-level', methods=['POST'])
+def set_skill_level():
+    """Set the computer player skill level (1-10)"""
+    global computer_player
+    data = request.json
+    skill_level = data.get('skill_level', 5)
+
+    # Validate skill level
+    try:
+        skill_level = int(skill_level)
+        if skill_level < 1 or skill_level > 10:
+            return jsonify({'error': 'Skill level must be between 1 and 10'}), 400
+    except (ValueError, TypeError):
+        return jsonify({'error': 'Invalid skill level format'}), 400
+
+    # Recreate computer player with new skill level
+    computer_player = ComputerPlayer('black', skill_level=skill_level)
+
+    print(f"Computer player skill level set to {skill_level}")
+
+    return jsonify({
+        'success': True,
+        'skill_level': skill_level,
+        'description': get_skill_description(skill_level)
+    })
+
+def get_skill_description(skill_level):
+    """Get a description for the skill level"""
+    descriptions = {
+        1: "Complete Beginner",
+        2: "Novice",
+        3: "Learning",
+        4: "Improving",
+        5: "Intermediate",
+        6: "Club Player",
+        7: "Strong Player",
+        8: "Advanced",
+        9: "Expert",
+        10: "Master"
+    }
+    return descriptions.get(skill_level, "Intermediate")
 
 @app.route('/<path:path>')
 def serve_static(path):

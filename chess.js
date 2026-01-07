@@ -20,6 +20,22 @@ const pieceSymbols = {
     'P': '♟', // black pawn
 };
 
+// Map piece types to readable names
+const pieceNames = {
+    'k': 'King',
+    'q': 'Queen',
+    'r': 'Rook',
+    'b': 'Bishop',
+    'n': 'Knight',
+    'p': 'Pawn',
+    'K': 'King',
+    'Q': 'Queen',
+    'R': 'Rook',
+    'B': 'Bishop',
+    'N': 'Knight',
+    'P': 'Pawn'
+};
+
 let selectedSquare = null;
 let gameState = null;
 let playerColor = 'white'; // Player is white, pieces at the bottom of the board
@@ -28,6 +44,13 @@ let statusElement = null;
 let moveHistoryElement = null;
 let resetButton = null;
 let moveHistory = [];
+let skillSlider = null;
+let skillLabel = null;
+let skillValue = null;
+let lastMoveSquares = [];
+let loadingOverlay = null;
+let boardWrapper = null;
+let capturedPieces = { white: [], black: [] };
 
 // Initialize the board
 function initializeBoard() {
@@ -36,14 +59,28 @@ function initializeBoard() {
     statusElement.id = 'status';
     statusElement.className = 'status';
     document.body.insertBefore(statusElement, document.querySelector('.game-container'));
-    
+
     // Initialize move history element
     moveHistoryElement = document.getElementById('move-history');
-    
+
     // Initialize reset button
     resetButton = document.getElementById('reset-button');
     resetButton.addEventListener('click', resetGame);
-    
+
+    // Initialize skill slider
+    skillSlider = document.getElementById('skill-slider');
+    skillLabel = document.getElementById('skill-label');
+    skillValue = document.getElementById('skill-value');
+
+    if (skillSlider) {
+        skillSlider.addEventListener('input', handleSkillChange);
+        // Fetch initial skill level from server
+        fetchSkillLevel();
+    }
+
+    // Initialize board wrapper for coordinate labels
+    boardWrapper = document.getElementById('board-wrapper');
+
     // Create the squares
     // Note: We create the board from bottom to top (rank 1 to 8)
     // This ensures the board is oriented correctly with white at the bottom
@@ -53,18 +90,44 @@ function initializeBoard() {
             square.classList.add('square');
             // Alternate colors for the chess board pattern
             square.classList.add((rankIndex + fileIndex) % 2 === 0 ? 'white' : 'black');
-            
+
             // Get the square name (e.g., "a1", "e4")
             const squareName = FILES[fileIndex] + RANKS[7 - rankIndex];
             square.dataset.position = squareName;
             square.addEventListener('click', () => handleSquareClick(square));
-            
+
             chessboard.appendChild(square);
         }
     }
-    
+
+    // Add coordinate labels
+    addCoordinateLabels();
+
     // Get initial board state
     fetchBoardState();
+}
+
+// Add coordinate labels to the board
+function addCoordinateLabels() {
+    if (!boardWrapper) return;
+
+    // Add file labels (a-h) at the bottom
+    FILES.forEach((file, index) => {
+        const label = document.createElement('div');
+        label.className = 'coordinate-label file-label';
+        label.textContent = file;
+        label.style.left = `${(index * 60) + 30}px`;
+        boardWrapper.appendChild(label);
+    });
+
+    // Add rank labels (1-8) on the left
+    RANKS.forEach((rank, index) => {
+        const label = document.createElement('div');
+        label.className = 'coordinate-label rank-label';
+        label.textContent = rank;
+        label.style.top = `${((7 - index) * 60) + 30}px`;
+        boardWrapper.appendChild(label);
+    });
 }
 
 // Fetch the current board state from the API
@@ -85,10 +148,15 @@ async function fetchBoardState() {
 }
 
 // Update the board display based on the current game state
-function updateBoard() {
+function updateBoard(previousPieces = null) {
+    // Detect captured pieces if we have previous state
+    if (previousPieces && gameState && gameState.pieces) {
+        detectCapturedPieces(previousPieces, gameState.pieces);
+    }
+
     // Clear all pieces
     document.querySelectorAll('.square span').forEach(span => span.remove());
-    
+
     // Place pieces according to the current state
     if (gameState && gameState.pieces) {
         Object.entries(gameState.pieces).forEach(([square, piece]) => {
@@ -101,30 +169,91 @@ function updateBoard() {
             }
         });
     }
-    
-    // Clear any highlights
+
+    // Clear any highlights and last move highlighting
     document.querySelectorAll('.highlight').forEach(el => el.classList.remove('highlight'));
+    document.querySelectorAll('.last-move').forEach(el => el.classList.remove('last-move'));
+
+    // Highlight last move squares
+    lastMoveSquares.forEach(squareName => {
+        const squareElement = document.querySelector(`.square[data-position="${squareName}"]`);
+        if (squareElement) {
+            squareElement.classList.add('last-move');
+        }
+    });
+
     selectedSquare = null;
+}
+
+// Detect captured pieces by comparing board states
+function detectCapturedPieces(previousPieces, currentPieces) {
+    // Find pieces that existed before but don't exist now
+    for (const square in previousPieces) {
+        const prevPiece = previousPieces[square];
+
+        // Check if piece is missing or replaced by opposite color
+        if (!currentPieces[square] || currentPieces[square].color !== prevPiece.color) {
+            // This piece was captured
+            const capturingColor = prevPiece.color === 'white' ? 'black' : 'white';
+
+            // Don't add if already in captured list
+            const pieceSymbol = pieceSymbols[prevPiece.type];
+            if (!capturedPieces[capturingColor].includes(pieceSymbol)) {
+                capturedPieces[capturingColor].push(pieceSymbol);
+                updateCapturedDisplay();
+            }
+        }
+    }
+}
+
+// Update the captured pieces display
+function updateCapturedDisplay() {
+    // Update white's captures (black pieces)
+    const whiteCapturedList = document.querySelector('#white-captured .captured-list');
+    if (whiteCapturedList) {
+        whiteCapturedList.innerHTML = '';
+        capturedPieces.white.forEach(piece => {
+            const pieceSpan = document.createElement('span');
+            pieceSpan.className = 'captured-piece';
+            pieceSpan.textContent = piece;
+            whiteCapturedList.appendChild(pieceSpan);
+        });
+    }
+
+    // Update black's captures (white pieces)
+    const blackCapturedList = document.querySelector('#black-captured .captured-list');
+    if (blackCapturedList) {
+        blackCapturedList.innerHTML = '';
+        capturedPieces.black.forEach(piece => {
+            const pieceSpan = document.createElement('span');
+            pieceSpan.className = 'captured-piece';
+            pieceSpan.textContent = piece;
+            blackCapturedList.appendChild(pieceSpan);
+        });
+    }
 }
 
 // Update the game status display
 function updateStatus() {
     if (!gameState) return;
-    
+
     let statusText = `Current turn: ${gameState.turn}`;
-    
+
     if (gameState.is_check) {
         statusText += ' | CHECK!';
     }
-    
+
     if (gameState.is_checkmate) {
         statusText = `CHECKMATE! ${gameState.turn === 'white' ? 'Black' : 'White'} wins!`;
+        showGameOverOverlay(`${gameState.turn === 'white' ? 'Black' : 'White'} wins!`, 'Checkmate');
     } else if (gameState.is_stalemate) {
         statusText = 'STALEMATE! Game is drawn.';
+        showGameOverOverlay('Draw!', 'Stalemate');
     } else if (gameState.is_game_over) {
         statusText = 'Game over!';
+        showGameOverOverlay('Game Over', '');
     }
-    
+
     setStatus(statusText);
 }
 
@@ -133,6 +262,64 @@ function setStatus(message) {
     if (statusElement) {
         statusElement.textContent = message;
     }
+}
+
+// Show loading spinner
+function showLoadingSpinner() {
+    if (!boardWrapper) return;
+
+    // Remove existing overlay if present
+    hideLoadingSpinner();
+
+    loadingOverlay = document.createElement('div');
+    loadingOverlay.className = 'loading-overlay';
+
+    const spinner = document.createElement('div');
+    spinner.className = 'loading-spinner';
+
+    loadingOverlay.appendChild(spinner);
+    boardWrapper.appendChild(loadingOverlay);
+}
+
+// Hide loading spinner
+function hideLoadingSpinner() {
+    if (loadingOverlay && loadingOverlay.parentNode) {
+        loadingOverlay.parentNode.removeChild(loadingOverlay);
+        loadingOverlay = null;
+    }
+}
+
+// Show game over overlay
+function showGameOverOverlay(title, message) {
+    if (!boardWrapper) return;
+
+    const overlay = document.createElement('div');
+    overlay.className = 'game-over-overlay';
+
+    const content = document.createElement('div');
+    content.className = 'game-over-content';
+
+    const titleElement = document.createElement('div');
+    titleElement.className = 'game-over-title';
+    titleElement.textContent = title;
+
+    const messageElement = document.createElement('div');
+    messageElement.className = 'game-over-message';
+    messageElement.textContent = message;
+
+    const button = document.createElement('button');
+    button.className = 'game-over-button';
+    button.textContent = 'New Game';
+    button.onclick = () => {
+        overlay.remove();
+        resetGame();
+    };
+
+    content.appendChild(titleElement);
+    if (message) content.appendChild(messageElement);
+    content.appendChild(button);
+    overlay.appendChild(content);
+    boardWrapper.appendChild(overlay);
 }
 
 // Handle square click events
@@ -212,28 +399,33 @@ async function makeMove(from, to) {
     const fromRank = from.charAt(1);
     const toFile = to.charAt(0);
     const toRank = to.charAt(1);
-    
+
     // Map the rank from UI to server (e.g., d7 -> d2)
     const fromCoord = fromFile + (9 - parseInt(fromRank));
     const toCoord = toFile + (9 - parseInt(toRank));
-    
+
     const moveUCI = fromCoord + toCoord;
-    
+
     try {
         isComputerThinking = true;
         setStatus('Making move...');
-        
+        showLoadingSpinner();
+
+        // Track last move for highlighting
+        lastMoveSquares = [from, to];
+
         // Store the current board state to detect the computer's move later
-        const previousPieces = gameState ? JSON.stringify(gameState.pieces) : null;
-        
+        const previousPiecesJson = gameState ? JSON.stringify(gameState.pieces) : null;
+        const previousPieces = gameState ? { ...gameState.pieces } : {};
+
         // Store the previous board state for comparison
         const previousBoard = { ...gameState };
-        
+
         console.log("Making move:", moveUCI);
         console.log("From piece:", gameState.pieces[from]);
         console.log("To square:", gameState.pieces[to] || "empty");
         console.log("Legal moves:", gameState.legal_moves);
-        
+
         const response = await fetch(`${API_URL}/move`, {
             method: 'POST',
             headers: {
@@ -241,17 +433,17 @@ async function makeMove(from, to) {
             },
             body: JSON.stringify({ move: moveUCI })
         });
-        
+
         if (!response.ok) {
             const errorData = await response.json();
             console.error("Server error:", errorData);
             throw new Error(errorData.error || 'Invalid move');
         }
-        
+
         // Get the new game state
         gameState = await response.json();
         console.log("New game state:", gameState);
-        
+
         // Always add the move to history if the server accepted it
         // Check if this is a promotion move (pawn reaching the last rank)
         let promotionPiece = '';
@@ -260,25 +452,38 @@ async function makeMove(from, to) {
             // This is a promotion - add the promotion piece to the move
             promotionPiece = gameState.pieces[to].type.toLowerCase() === gameState.pieces[to].type ?
                 gameState.pieces[to].type : gameState.pieces[to].type.toLowerCase();
-            addMoveToHistory(moveUCI + promotionPiece, 'white');
+            addMoveToHistory(moveUCI + promotionPiece, 'white', previousPieces);
         } else {
             // Regular move
-            addMoveToHistory(moveUCI, 'white');
+            addMoveToHistory(moveUCI, 'white', previousPieces);
         }
-        
-        updateBoard();
+
+        updateBoard(previousPieces);
         updateStatus();
-        
-        // If the computer made a move in response, add it to the history
+
+        // If the computer made a move in response, add it to the history and track it
         if (gameState.turn === playerColor && !gameState.is_game_over) {
             // Try to determine the computer's move by comparing board states
             // This is a simplified approach - in a real implementation, the server should return the last move
-            const computerMove = detectComputerMove(previousPieces, gameState.pieces);
+            const computerMove = detectComputerMove(previousPiecesJson, gameState.pieces);
             if (computerMove) {
-                addMoveToHistory(computerMove, 'black');
+                // Store pieces before computer move for formatting
+                const beforeComputerMove = JSON.parse(previousPiecesJson);
+
+                addMoveToHistory(computerMove, 'black', beforeComputerMove);
+
+                // Update last move squares for highlighting
+                const fromSquare = computerMove.substring(0, 2);
+                const toSquare = computerMove.substring(2, 4);
+                lastMoveSquares = [fromSquare, toSquare];
+
+                // Add flash animation to AI move squares
+                animateAIMove(fromSquare, toSquare);
+
+                updateBoard(beforeComputerMove);
             }
         }
-        
+
         if (gameState.turn !== playerColor && !gameState.is_game_over) {
             setStatus('Computer is thinking...');
         }
@@ -287,6 +492,7 @@ async function makeMove(from, to) {
         setStatus(`Error: ${error.message}`);
     } finally {
         isComputerThinking = false;
+        hideLoadingSpinner();
     }
 }
 
@@ -433,11 +639,78 @@ function detectComputerMove(previousPiecesJson, currentPieces) {
     }
 }
 
+// Get piece information from a square
+function getPieceInfo(square) {
+    if (!gameState || !gameState.pieces || !gameState.pieces[square]) {
+        return null;
+    }
+    return gameState.pieces[square];
+}
+
+// Animate AI move with flash effect
+function animateAIMove(fromSquare, toSquare) {
+    const fromElement = document.querySelector(`.square[data-position="${fromSquare}"]`);
+    const toElement = document.querySelector(`.square[data-position="${toSquare}"]`);
+
+    if (fromElement) {
+        fromElement.classList.add('ai-move-flash');
+        setTimeout(() => fromElement.classList.remove('ai-move-flash'), 5000);
+    }
+
+    if (toElement) {
+        toElement.classList.add('ai-move-flash');
+        setTimeout(() => toElement.classList.remove('ai-move-flash'), 5000);
+    }
+}
+
+// Format move with piece name for display
+function formatMoveWithPieceName(move, previousPieces = null) {
+    const fromSquare = move.substring(0, 2);
+    const toSquare = move.substring(2, 4);
+    const promotion = move.length > 4 ? move.substring(4) : '';
+
+    // Try to get piece info from previous board state if available
+    let pieceType = null;
+    if (previousPieces) {
+        const prevPieceInfo = previousPieces[fromSquare];
+        if (prevPieceInfo) {
+            pieceType = prevPieceInfo.type;
+        }
+    }
+
+    // If not found in previous state, check current state
+    if (!pieceType) {
+        const pieceInfo = getPieceInfo(toSquare);
+        pieceType = pieceInfo ? pieceInfo.type : null;
+    }
+
+    const pieceName = pieceType ? pieceNames[pieceType] : 'Piece';
+    const pieceSymbol = pieceType ? pieceSymbols[pieceType] : '';
+
+    // Check for special moves
+    if (pieceName === 'King' && Math.abs(fromSquare.charCodeAt(0) - toSquare.charCodeAt(0)) > 1) {
+        // Castling
+        return toSquare.charCodeAt(0) > fromSquare.charCodeAt(0)
+            ? `${pieceSymbol} Castled King-side`
+            : `${pieceSymbol} Castled Queen-side`;
+    }
+
+    // Regular move
+    let moveText = `${pieceSymbol} ${pieceName} ${fromSquare} → ${toSquare}`;
+
+    if (promotion) {
+        const promotionName = pieceNames[promotion] || promotion;
+        moveText += ` (promoted to ${promotionName})`;
+    }
+
+    return moveText;
+}
+
 // Add a move to the move history
-function addMoveToHistory(move, color) {
+function addMoveToHistory(move, color, previousPieces = null) {
     const moveNumber = Math.floor(moveHistory.length / 2) + 1;
     const isWhiteMove = color === 'white';
-    
+
     // Check if this move is already in the history to avoid duplicates
     if (isWhiteMove) {
         const lastMove = moveHistory[moveHistory.length - 1];
@@ -452,29 +725,38 @@ function addMoveToHistory(move, color) {
             return;
         }
     }
-    
+
+    // Format the move with piece name
+    const formattedMove = formatMoveWithPieceName(move, previousPieces);
+
     // Create a new move entry
     const moveEntry = document.createElement('div');
     moveEntry.className = 'move-entry';
-    
+
     if (isWhiteMove) {
-        moveEntry.textContent = `${moveNumber}. White: ${move}`;
+        moveEntry.innerHTML = `<strong>${moveNumber}.</strong> ${formattedMove}`;
         moveHistory.push({ number: moveNumber, white: move });
     } else {
         // Find the last move entry or create a new one
         const lastMove = moveHistory[moveHistory.length - 1];
         if (lastMove && lastMove.number === moveNumber && !lastMove.black) {
             lastMove.black = move;
-            moveEntry.textContent = `${moveNumber}. White: ${lastMove.white} Black: ${move}`;
+            const whiteFormatted = formatMoveWithPieceName(lastMove.white, previousPieces);
+            moveEntry.innerHTML = `<strong>${moveNumber}.</strong> ${whiteFormatted}<br/><span style="margin-left: 1.5em;">${formattedMove}</span>`;
         } else {
-            moveEntry.textContent = `${moveNumber}... Black: ${move}`;
+            moveEntry.innerHTML = `<strong>${moveNumber}...</strong> ${formattedMove}`;
             moveHistory.push({ number: moveNumber, black: move });
         }
+
+        // Add special styling for AI moves
+        moveEntry.style.backgroundColor = 'rgba(102, 126, 234, 0.1)';
+        moveEntry.style.borderLeft = '3px solid rgba(102, 126, 234, 0.5)';
+        moveEntry.style.paddingLeft = '10px';
     }
-    
+
     // Add the move entry to the move history element
     moveHistoryElement.appendChild(moveEntry);
-    
+
     // Scroll to the bottom of the move history
     moveHistoryElement.scrollTop = moveHistoryElement.scrollHeight;
 }
@@ -483,22 +765,30 @@ function addMoveToHistory(move, color) {
 async function resetGame() {
     try {
         setStatus('Resetting game...');
-        
+
         const response = await fetch(`${API_URL}/reset`, {
             method: 'POST'
         });
-        
+
         if (!response.ok) {
             throw new Error('Failed to reset game');
         }
-        
+
         gameState = await response.json();
+
+        // Clear last move tracking
+        lastMoveSquares = [];
+
+        // Clear captured pieces
+        capturedPieces = { white: [], black: [] };
+        updateCapturedDisplay();
+
         updateBoard();
         updateStatus();
-        
+
         // Clear the move history
         clearMoveHistory();
-        
+
         setStatus('Game reset. White to move.');
     } catch (error) {
         console.error('Error resetting game:', error);
@@ -512,6 +802,75 @@ function clearMoveHistory() {
     if (moveHistoryElement) {
         moveHistoryElement.innerHTML = '';
     }
+}
+
+// Skill level descriptions mapping
+function getSkillDescription(level) {
+    const descriptions = {
+        1: "Complete Beginner",
+        2: "Novice",
+        3: "Learning",
+        4: "Improving",
+        5: "Intermediate",
+        6: "Club Player",
+        7: "Strong Player",
+        8: "Advanced",
+        9: "Expert",
+        10: "Master"
+    };
+    return descriptions[level] || "Intermediate";
+}
+
+// Fetch current skill level from server
+async function fetchSkillLevel() {
+    try {
+        const response = await fetch(`${API_URL}/skill-level`);
+        if (response.ok) {
+            const data = await response.json();
+            updateSkillDisplay(data.skill_level, data.description);
+        }
+    } catch (error) {
+        console.error('Error fetching skill level:', error);
+    }
+}
+
+// Handle skill slider change
+async function handleSkillChange(event) {
+    const level = parseInt(event.target.value);
+    const description = getSkillDescription(level);
+
+    // Update UI immediately for responsive feel
+    updateSkillDisplay(level, description);
+
+    // Send to server
+    try {
+        const response = await fetch(`${API_URL}/skill-level`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ skill_level: level })
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            console.log(`Skill level set to ${data.skill_level}: ${data.description}`);
+            setStatus(`Computer skill level: ${data.description} (${data.skill_level})`);
+        } else {
+            console.error('Failed to set skill level');
+            setStatus('Error setting skill level');
+        }
+    } catch (error) {
+        console.error('Error setting skill level:', error);
+        setStatus('Error setting skill level');
+    }
+}
+
+// Update skill display elements
+function updateSkillDisplay(level, description) {
+    if (skillSlider) skillSlider.value = level;
+    if (skillValue) skillValue.textContent = level;
+    if (skillLabel) skillLabel.textContent = description;
 }
 
 // Initialize the board when the page loads

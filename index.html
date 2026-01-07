@@ -10,9 +10,32 @@
     <h1>Interactive Chessboard</h1>
     <div class="game-container">
         <div class="left-panel">
-            <div class="chessboard" id="chessboard"></div>
+            <div class="captured-pieces white-captured" id="white-captured">
+                <h4>Captured by White</h4>
+                <div class="captured-list"></div>
+            </div>
+            <div class="board-wrapper" id="board-wrapper">
+                <div class="chessboard" id="chessboard"></div>
+            </div>
+            <div class="captured-pieces black-captured" id="black-captured">
+                <h4>Captured by Black</h4>
+                <div class="captured-list"></div>
+            </div>
             <div class="controls">
                 <button id="reset-button">Reset Game</button>
+            </div>
+            <div class="skill-control">
+                <h3>Computer Skill Level</h3>
+                <div class="skill-slider-container">
+                    <label for="skill-slider">
+                        <span id="skill-label">Intermediate</span> (Level <span id="skill-value">5</span>)
+                    </label>
+                    <input type="range" id="skill-slider" min="1" max="10" value="5" step="1">
+                    <div class="skill-labels">
+                        <span>Beginner</span>
+                        <span>Master</span>
+                    </div>
+                </div>
             </div>
         </div>
         <div class="right-panel">
