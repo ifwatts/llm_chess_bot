@@ -1,0 +1,20 @@
+{
+  "include": [
+    "."
+  ],
+  "exclude": [
+    "**/node_modules",
+    "**/__pycache__",
+    ".venv"
+  ],
+  "venvPath": "/Users/ifwatts/.pyenv/versions",
+  "venv": "3.10.0",
+  "extraPaths": [
+    "/Users/ifwatts/.pyenv/versions/3.10.0/lib/python3.10/site-packages"
+  ],
+  "reportMissingImports": false,
+  "reportMissingTypeStubs": false,
+  "pythonVersion": "3.10",
+  "pythonPlatform": "Darwin",
+  "typeCheckingMode": "off"
+}
