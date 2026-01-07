@@ -31,6 +31,9 @@ let moveHistory = [];
 let skillSlider = null;
 let skillLabel = null;
 let skillValue = null;
+let lastMoveSquares = [];
+let loadingOverlay = null;
+let boardWrapper = null;
 
 // Initialize the board
 function initializeBoard() {
@@ -39,10 +42,10 @@ function initializeBoard() {
     statusElement.id = 'status';
     statusElement.className = 'status';
     document.body.insertBefore(statusElement, document.querySelector('.game-container'));
-    
+
     // Initialize move history element
     moveHistoryElement = document.getElementById('move-history');
-    
+
     // Initialize reset button
     resetButton = document.getElementById('reset-button');
     resetButton.addEventListener('click', resetGame);
@@ -58,6 +61,9 @@ function initializeBoard() {
         fetchSkillLevel();
     }
 
+    // Initialize board wrapper for coordinate labels
+    boardWrapper = document.getElementById('board-wrapper');
+
     // Create the squares
     // Note: We create the board from bottom to top (rank 1 to 8)
     // This ensures the board is oriented correctly with white at the bottom
@@ -67,18 +73,44 @@ function initializeBoard() {
             square.classList.add('square');
             // Alternate colors for the chess board pattern
             square.classList.add((rankIndex + fileIndex) % 2 === 0 ? 'white' : 'black');
-            
+
             // Get the square name (e.g., "a1", "e4")
             const squareName = FILES[fileIndex] + RANKS[7 - rankIndex];
             square.dataset.position = squareName;
             square.addEventListener('click', () => handleSquareClick(square));
-            
+
             chessboard.appendChild(square);
         }
     }
-    
+
+    // Add coordinate labels
+    addCoordinateLabels();
+
     // Get initial board state
     fetchBoardState();
+}
+
+// Add coordinate labels to the board
+function addCoordinateLabels() {
+    if (!boardWrapper) return;
+
+    // Add file labels (a-h) at the bottom
+    FILES.forEach((file, index) => {
+        const label = document.createElement('div');
+        label.className = 'coordinate-label file-label';
+        label.textContent = file;
+        label.style.left = `${(index * 60) + 30}px`;
+        boardWrapper.appendChild(label);
+    });
+
+    // Add rank labels (1-8) on the left
+    RANKS.forEach((rank, index) => {
+        const label = document.createElement('div');
+        label.className = 'coordinate-label rank-label';
+        label.textContent = rank;
+        label.style.top = `${((7 - index) * 60) + 30}px`;
+        boardWrapper.appendChild(label);
+    });
 }
 
 // Fetch the current board state from the API
@@ -102,7 +134,7 @@ async function fetchBoardState() {
 function updateBoard() {
     // Clear all pieces
     document.querySelectorAll('.square span').forEach(span => span.remove());
-    
+
     // Place pieces according to the current state
     if (gameState && gameState.pieces) {
         Object.entries(gameState.pieces).forEach(([square, piece]) => {
@@ -115,30 +147,43 @@ function updateBoard() {
             }
         });
     }
-    
-    // Clear any highlights
+
+    // Clear any highlights and last move highlighting
     document.querySelectorAll('.highlight').forEach(el => el.classList.remove('highlight'));
+    document.querySelectorAll('.last-move').forEach(el => el.classList.remove('last-move'));
+
+    // Highlight last move squares
+    lastMoveSquares.forEach(squareName => {
+        const squareElement = document.querySelector(`.square[data-position="${squareName}"]`);
+        if (squareElement) {
+            squareElement.classList.add('last-move');
+        }
+    });
+
     selectedSquare = null;
 }
 
 // Update the game status display
 function updateStatus() {
     if (!gameState) return;
-    
+
     let statusText = `Current turn: ${gameState.turn}`;
-    
+
     if (gameState.is_check) {
         statusText += ' | CHECK!';
     }
-    
+
     if (gameState.is_checkmate) {
         statusText = `CHECKMATE! ${gameState.turn === 'white' ? 'Black' : 'White'} wins!`;
+        showGameOverOverlay(`${gameState.turn === 'white' ? 'Black' : 'White'} wins!`, 'Checkmate');
     } else if (gameState.is_stalemate) {
         statusText = 'STALEMATE! Game is drawn.';
+        showGameOverOverlay('Draw!', 'Stalemate');
     } else if (gameState.is_game_over) {
         statusText = 'Game over!';
+        showGameOverOverlay('Game Over', '');
     }
-    
+
     setStatus(statusText);
 }
 
@@ -147,6 +192,64 @@ function setStatus(message) {
     if (statusElement) {
         statusElement.textContent = message;
     }
+}
+
+// Show loading spinner
+function showLoadingSpinner() {
+    if (!boardWrapper) return;
+
+    // Remove existing overlay if present
+    hideLoadingSpinner();
+
+    loadingOverlay = document.createElement('div');
+    loadingOverlay.className = 'loading-overlay';
+
+    const spinner = document.createElement('div');
+    spinner.className = 'loading-spinner';
+
+    loadingOverlay.appendChild(spinner);
+    boardWrapper.appendChild(loadingOverlay);
+}
+
+// Hide loading spinner
+function hideLoadingSpinner() {
+    if (loadingOverlay && loadingOverlay.parentNode) {
+        loadingOverlay.parentNode.removeChild(loadingOverlay);
+        loadingOverlay = null;
+    }
+}
+
+// Show game over overlay
+function showGameOverOverlay(title, message) {
+    if (!boardWrapper) return;
+
+    const overlay = document.createElement('div');
+    overlay.className = 'game-over-overlay';
+
+    const content = document.createElement('div');
+    content.className = 'game-over-content';
+
+    const titleElement = document.createElement('div');
+    titleElement.className = 'game-over-title';
+    titleElement.textContent = title;
+
+    const messageElement = document.createElement('div');
+    messageElement.className = 'game-over-message';
+    messageElement.textContent = message;
+
+    const button = document.createElement('button');
+    button.className = 'game-over-button';
+    button.textContent = 'New Game';
+    button.onclick = () => {
+        overlay.remove();
+        resetGame();
+    };
+
+    content.appendChild(titleElement);
+    if (message) content.appendChild(messageElement);
+    content.appendChild(button);
+    overlay.appendChild(content);
+    boardWrapper.appendChild(overlay);
 }
 
 // Handle square click events
@@ -226,20 +329,24 @@ async function makeMove(from, to) {
     const fromRank = from.charAt(1);
     const toFile = to.charAt(0);
     const toRank = to.charAt(1);
-    
+
     // Map the rank from UI to server (e.g., d7 -> d2)
     const fromCoord = fromFile + (9 - parseInt(fromRank));
     const toCoord = toFile + (9 - parseInt(toRank));
-    
+
     const moveUCI = fromCoord + toCoord;
-    
+
     try {
         isComputerThinking = true;
         setStatus('Making move...');
-        
+        showLoadingSpinner();
+
+        // Track last move for highlighting
+        lastMoveSquares = [from, to];
+
         // Store the current board state to detect the computer's move later
         const previousPieces = gameState ? JSON.stringify(gameState.pieces) : null;
-        
+
         // Store the previous board state for comparison
         const previousBoard = { ...gameState };
         
@@ -282,17 +389,22 @@ async function makeMove(from, to) {
         
         updateBoard();
         updateStatus();
-        
-        // If the computer made a move in response, add it to the history
+
+        // If the computer made a move in response, add it to the history and track it
         if (gameState.turn === playerColor && !gameState.is_game_over) {
             // Try to determine the computer's move by comparing board states
             // This is a simplified approach - in a real implementation, the server should return the last move
             const computerMove = detectComputerMove(previousPieces, gameState.pieces);
             if (computerMove) {
                 addMoveToHistory(computerMove, 'black');
+                // Update last move squares for highlighting
+                const fromSquare = computerMove.substring(0, 2);
+                const toSquare = computerMove.substring(2, 4);
+                lastMoveSquares = [fromSquare, toSquare];
+                updateBoard();
             }
         }
-        
+
         if (gameState.turn !== playerColor && !gameState.is_game_over) {
             setStatus('Computer is thinking...');
         }
@@ -301,6 +413,7 @@ async function makeMove(from, to) {
         setStatus(`Error: ${error.message}`);
     } finally {
         isComputerThinking = false;
+        hideLoadingSpinner();
     }
 }
 
@@ -497,22 +610,26 @@ function addMoveToHistory(move, color) {
 async function resetGame() {
     try {
         setStatus('Resetting game...');
-        
+
         const response = await fetch(`${API_URL}/reset`, {
             method: 'POST'
         });
-        
+
         if (!response.ok) {
             throw new Error('Failed to reset game');
         }
-        
+
         gameState = await response.json();
+
+        // Clear last move tracking
+        lastMoveSquares = [];
+
         updateBoard();
         updateStatus();
-        
+
         // Clear the move history
         clearMoveHistory();
-        
+
         setStatus('Game reset. White to move.');
     } catch (error) {
         console.error('Error resetting game:', error);
