@@ -20,6 +20,22 @@ const pieceSymbols = {
     'P': '♟', // black pawn
 };
 
+// Map piece types to readable names
+const pieceNames = {
+    'k': 'King',
+    'q': 'Queen',
+    'r': 'Rook',
+    'b': 'Bishop',
+    'n': 'Knight',
+    'p': 'Pawn',
+    'K': 'King',
+    'Q': 'Queen',
+    'R': 'Rook',
+    'B': 'Bishop',
+    'N': 'Knight',
+    'P': 'Pawn'
+};
+
 let selectedSquare = null;
 let gameState = null;
 let playerColor = 'white'; // Player is white, pieces at the bottom of the board
@@ -345,16 +361,17 @@ async function makeMove(from, to) {
         lastMoveSquares = [from, to];
 
         // Store the current board state to detect the computer's move later
-        const previousPieces = gameState ? JSON.stringify(gameState.pieces) : null;
+        const previousPiecesJson = gameState ? JSON.stringify(gameState.pieces) : null;
+        const previousPieces = gameState ? { ...gameState.pieces } : {};
 
         // Store the previous board state for comparison
         const previousBoard = { ...gameState };
-        
+
         console.log("Making move:", moveUCI);
         console.log("From piece:", gameState.pieces[from]);
         console.log("To square:", gameState.pieces[to] || "empty");
         console.log("Legal moves:", gameState.legal_moves);
-        
+
         const response = await fetch(`${API_URL}/move`, {
             method: 'POST',
             headers: {
@@ -362,17 +379,17 @@ async function makeMove(from, to) {
             },
             body: JSON.stringify({ move: moveUCI })
         });
-        
+
         if (!response.ok) {
             const errorData = await response.json();
             console.error("Server error:", errorData);
             throw new Error(errorData.error || 'Invalid move');
         }
-        
+
         // Get the new game state
         gameState = await response.json();
         console.log("New game state:", gameState);
-        
+
         // Always add the move to history if the server accepted it
         // Check if this is a promotion move (pawn reaching the last rank)
         let promotionPiece = '';
@@ -381,12 +398,12 @@ async function makeMove(from, to) {
             // This is a promotion - add the promotion piece to the move
             promotionPiece = gameState.pieces[to].type.toLowerCase() === gameState.pieces[to].type ?
                 gameState.pieces[to].type : gameState.pieces[to].type.toLowerCase();
-            addMoveToHistory(moveUCI + promotionPiece, 'white');
+            addMoveToHistory(moveUCI + promotionPiece, 'white', previousPieces);
         } else {
             // Regular move
-            addMoveToHistory(moveUCI, 'white');
+            addMoveToHistory(moveUCI, 'white', previousPieces);
         }
-        
+
         updateBoard();
         updateStatus();
 
@@ -394,13 +411,21 @@ async function makeMove(from, to) {
         if (gameState.turn === playerColor && !gameState.is_game_over) {
             // Try to determine the computer's move by comparing board states
             // This is a simplified approach - in a real implementation, the server should return the last move
-            const computerMove = detectComputerMove(previousPieces, gameState.pieces);
+            const computerMove = detectComputerMove(previousPiecesJson, gameState.pieces);
             if (computerMove) {
-                addMoveToHistory(computerMove, 'black');
+                // Store pieces before computer move for formatting
+                const beforeComputerMove = JSON.parse(previousPiecesJson);
+
+                addMoveToHistory(computerMove, 'black', beforeComputerMove);
+
                 // Update last move squares for highlighting
                 const fromSquare = computerMove.substring(0, 2);
                 const toSquare = computerMove.substring(2, 4);
                 lastMoveSquares = [fromSquare, toSquare];
+
+                // Add flash animation to AI move squares
+                animateAIMove(fromSquare, toSquare);
+
                 updateBoard();
             }
         }
@@ -560,11 +585,78 @@ function detectComputerMove(previousPiecesJson, currentPieces) {
     }
 }
 
+// Get piece information from a square
+function getPieceInfo(square) {
+    if (!gameState || !gameState.pieces || !gameState.pieces[square]) {
+        return null;
+    }
+    return gameState.pieces[square];
+}
+
+// Animate AI move with flash effect
+function animateAIMove(fromSquare, toSquare) {
+    const fromElement = document.querySelector(`.square[data-position="${fromSquare}"]`);
+    const toElement = document.querySelector(`.square[data-position="${toSquare}"]`);
+
+    if (fromElement) {
+        fromElement.classList.add('ai-move-flash');
+        setTimeout(() => fromElement.classList.remove('ai-move-flash'), 1500);
+    }
+
+    if (toElement) {
+        toElement.classList.add('ai-move-flash');
+        setTimeout(() => toElement.classList.remove('ai-move-flash'), 1500);
+    }
+}
+
+// Format move with piece name for display
+function formatMoveWithPieceName(move, previousPieces = null) {
+    const fromSquare = move.substring(0, 2);
+    const toSquare = move.substring(2, 4);
+    const promotion = move.length > 4 ? move.substring(4) : '';
+
+    // Try to get piece info from previous board state if available
+    let pieceType = null;
+    if (previousPieces) {
+        const prevPieceInfo = previousPieces[fromSquare];
+        if (prevPieceInfo) {
+            pieceType = prevPieceInfo.type;
+        }
+    }
+
+    // If not found in previous state, check current state
+    if (!pieceType) {
+        const pieceInfo = getPieceInfo(toSquare);
+        pieceType = pieceInfo ? pieceInfo.type : null;
+    }
+
+    const pieceName = pieceType ? pieceNames[pieceType] : 'Piece';
+    const pieceSymbol = pieceType ? pieceSymbols[pieceType] : '';
+
+    // Check for special moves
+    if (pieceName === 'King' && Math.abs(fromSquare.charCodeAt(0) - toSquare.charCodeAt(0)) > 1) {
+        // Castling
+        return toSquare.charCodeAt(0) > fromSquare.charCodeAt(0)
+            ? `${pieceSymbol} Castled King-side`
+            : `${pieceSymbol} Castled Queen-side`;
+    }
+
+    // Regular move
+    let moveText = `${pieceSymbol} ${pieceName} ${fromSquare} → ${toSquare}`;
+
+    if (promotion) {
+        const promotionName = pieceNames[promotion] || promotion;
+        moveText += ` (promoted to ${promotionName})`;
+    }
+
+    return moveText;
+}
+
 // Add a move to the move history
-function addMoveToHistory(move, color) {
+function addMoveToHistory(move, color, previousPieces = null) {
     const moveNumber = Math.floor(moveHistory.length / 2) + 1;
     const isWhiteMove = color === 'white';
-    
+
     // Check if this move is already in the history to avoid duplicates
     if (isWhiteMove) {
         const lastMove = moveHistory[moveHistory.length - 1];
@@ -579,29 +671,38 @@ function addMoveToHistory(move, color) {
             return;
         }
     }
-    
+
+    // Format the move with piece name
+    const formattedMove = formatMoveWithPieceName(move, previousPieces);
+
     // Create a new move entry
     const moveEntry = document.createElement('div');
     moveEntry.className = 'move-entry';
-    
+
     if (isWhiteMove) {
-        moveEntry.textContent = `${moveNumber}. White: ${move}`;
+        moveEntry.innerHTML = `<strong>${moveNumber}.</strong> ${formattedMove}`;
         moveHistory.push({ number: moveNumber, white: move });
     } else {
         // Find the last move entry or create a new one
         const lastMove = moveHistory[moveHistory.length - 1];
         if (lastMove && lastMove.number === moveNumber && !lastMove.black) {
             lastMove.black = move;
-            moveEntry.textContent = `${moveNumber}. White: ${lastMove.white} Black: ${move}`;
+            const whiteFormatted = formatMoveWithPieceName(lastMove.white, previousPieces);
+            moveEntry.innerHTML = `<strong>${moveNumber}.</strong> ${whiteFormatted}<br/><span style="margin-left: 1.5em;">${formattedMove}</span>`;
         } else {
-            moveEntry.textContent = `${moveNumber}... Black: ${move}`;
+            moveEntry.innerHTML = `<strong>${moveNumber}...</strong> ${formattedMove}`;
             moveHistory.push({ number: moveNumber, black: move });
         }
+
+        // Add special styling for AI moves
+        moveEntry.style.backgroundColor = 'rgba(102, 126, 234, 0.1)';
+        moveEntry.style.borderLeft = '3px solid rgba(102, 126, 234, 0.5)';
+        moveEntry.style.paddingLeft = '10px';
     }
-    
+
     // Add the move entry to the move history element
     moveHistoryElement.appendChild(moveEntry);
-    
+
     // Scroll to the bottom of the move history
     moveHistoryElement.scrollTop = moveHistoryElement.scrollHeight;
 }
