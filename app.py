@@ -126,6 +126,65 @@ def set_skill_level():
         'description': get_skill_description(skill_level)
     })
 
+@app.route('/hint', methods=['POST'])
+def get_hint():
+    """Get a hint for the current position"""
+    data = request.json
+    hint_level = data.get('level', 'basic')  # 'basic', 'intermediate', 'advanced'
+    
+    # Validate hint level
+    valid_levels = ['basic', 'intermediate', 'advanced']
+    if hint_level not in valid_levels:
+        return jsonify({'error': f'Hint level must be one of: {", ".join(valid_levels)}'}), 400
+    
+    # Check if it's the human player's turn (White)
+    board_state = chess_board.get_board_state()
+    if board_state['turn'] != 'white':
+        return jsonify({'error': 'Hints are only available on your turn (White to move)'}), 400
+    
+    # Create a temporary ComputerPlayer for White to generate hints
+    temp_hint_player = ComputerPlayer('white', skill_level=10)
+    hint = temp_hint_player.get_hint(chess_board, hint_level)
+    
+    if hint is None:
+        return jsonify({'error': 'Unable to generate hint'}), 500
+    
+    return jsonify(hint)
+
+@app.route('/learning-mode', methods=['GET'])
+def get_learning_mode():
+    """Get current learning mode settings"""
+    return jsonify({
+        'enabled': getattr(computer_player, 'learning_mode', False),
+        'hint_level': getattr(computer_player, 'hint_level', 'basic')
+    })
+
+@app.route('/learning-mode', methods=['POST'])
+def set_learning_mode():
+    """Set learning mode settings"""
+    global computer_player
+    data = request.json
+    
+    enabled = data.get('enabled', False)
+    hint_level = data.get('hint_level', 'basic')
+    
+    # Validate hint level
+    valid_levels = ['basic', 'intermediate', 'advanced']
+    if hint_level not in valid_levels:
+        return jsonify({'error': f'Hint level must be one of: {", ".join(valid_levels)}'}), 400
+    
+    # Update computer player settings
+    computer_player.learning_mode = enabled
+    computer_player.hint_level = hint_level
+    
+    print(f"Learning mode: {'enabled' if enabled else 'disabled'}, hint level: {hint_level}")
+    
+    return jsonify({
+        'success': True,
+        'enabled': enabled,
+        'hint_level': hint_level
+    })
+
 def get_skill_description(skill_level):
     """Get a description for the skill level"""
     descriptions = {

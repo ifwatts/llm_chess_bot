@@ -23,6 +23,33 @@
             </div>
             <div class="controls">
                 <button id="reset-button">Reset Game</button>
+                <button id="hint-button">Get Hint</button>
+            </div>
+            <div class="learning-mode-control">
+                <h3>Learning Mode</h3>
+                <div class="learning-toggle">
+                    <label>
+                        <input type="checkbox" id="learning-mode-toggle">
+                        <span>Enable Learning Mode</span>
+                    </label>
+                </div>
+                <div class="hint-level-control">
+                    <label for="hint-level-select">
+                        Hint Level:
+                        <select id="hint-level-select">
+                            <option value="basic">Basic</option>
+                            <option value="intermediate">Intermediate</option>
+                            <option value="advanced">Advanced</option>
+                        </select>
+                    </label>
+                </div>
+                <div id="hint-display" class="hint-display" style="display: none;">
+                    <h4>Hint</h4>
+                    <div class="hint-content">
+                        <div class="hint-move"></div>
+                        <div class="hint-explanation"></div>
+                    </div>
+                </div>
             </div>
             <div class="skill-control">
                 <h3>Computer Skill Level</h3>

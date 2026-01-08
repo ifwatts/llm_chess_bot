@@ -16,6 +16,8 @@ An interactive web-based chess application featuring an AI opponent powered by a
 - **Captured Pieces Display**: Visual tracker showing all captured pieces for both players
 - **Last Move Highlighting**: Yellow overlay shows the most recent move
 - **AI Move Flash**: 5-second blue animation highlights AI moves for visibility
+- **Learning Mode**: Educational hints system with move explanations and visual guidance
+- **Hint Levels**: Three complexity levels (Basic, Intermediate, Advanced) for tailored learning
 
 ### User Interface
 - **Modern Design**: Professional gradient background with chess-themed patterns
@@ -101,7 +103,66 @@ You should see the chess board ready to play!
 3. **AI Response**: The computer will think and make its move (watch for the blue flash!)
 4. **Adjust Difficulty**: Use the skill level slider (1-10) at any time to change AI strength
 5. **View History**: Check the right panel to see all moves with piece names
-6. **Reset Game**: Click the "Reset Game" button to start over
+6. **Get Hints**: Click "Get Hint" for move suggestions and explanations
+7. **Enable Learning Mode**: Toggle learning mode for enhanced educational features
+8. **Adjust Hint Level**: Choose Basic, Intermediate, or Advanced hint complexity
+9. **Reset Game**: Click the "Reset Game" button to start over
+
+### API Endpoints
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/board` | GET | Returns current board state and legal moves |
+| `/move` | POST | Processes a player move, triggers AI response |
+| `/reset` | POST | Resets game to initial state |
+| `/skill-level` | GET | Returns current AI skill level |
+| `/skill-level` | POST | Updates AI skill level (1-10) |
+| `/hint` | POST | Generates a hint for current position |
+| `/learning-mode` | GET | Returns learning mode settings |
+| `/learning-mode` | POST | Updates learning mode settings |
+
+### POST /hint
+
+**Purpose**: Generate a hint for the current position
+
+**Request Body**:
+```json
+{
+    "level": "basic"  // "basic", "intermediate", or "advanced"
+}
+```
+
+**Response** (200 OK):
+```json
+{
+    "move": "e2e4",
+    "explanation": "Control the center - this is a key strategic principle in chess.",
+    "category": "center",
+    "from_square": "e2",
+    "to_square": "e4"
+}
+```
+
+### POST /learning-mode
+
+**Purpose**: Update learning mode settings
+
+**Request Body**:
+```json
+{
+    "enabled": true,
+    "hint_level": "intermediate"
+}
+```
+
+**Response** (200 OK):
+```json
+{
+    "success": true,
+    "enabled": true,
+    "hint_level": "intermediate"
+}
+```
 
 ### Skill Levels Explained
 
@@ -113,6 +174,34 @@ You should see the chess board ready to play!
 | 7-8 | Advanced | Strong tactical and positional play, 10% chance of random move |
 | 9 | Expert | Complex evaluations, 5% chance of random move |
 | 10 | Master | Objectively best moves, full LLM strength |
+
+### Learning Mode & Hint System
+
+The learning mode provides educational assistance to help players improve their chess skills:
+
+#### Hint Levels
+| Level | Description | Explanation Style |
+|-------|-------------|-------------------|
+| **Basic** | Beginner-friendly | Simple 1-2 sentence explanations focusing on main ideas |
+| **Intermediate** | Club player level | 2-3 sentence explanations with tactical details and principles |
+| **Advanced** | Expert analysis | 3-4 sentence detailed explanations with strategic considerations |
+
+#### Hint Categories
+Hints are color-coded by type:
+- **🔴 Capture** - Material gain opportunities
+- **🟠 Check** - Attacks on the opponent's king
+- **🟣 Checkmate** - Game-ending moves
+- **🔵 Development** - Getting pieces into play
+- **🟢 Center Control** - Controlling key squares
+- **🟡 Castling** - King safety and piece development
+- **🟪 Promotion** - Pawn promotion opportunities
+- **⚪ General** - Positional improvements
+
+#### Visual Indicators
+- **Green highlighting** shows suggested move squares
+- **Animated arrows** indicate move direction
+- **Light bulb icons** mark hint squares
+- **Color-coded explanations** match move categories
 
 ## Rebuilding and Redeploying
 

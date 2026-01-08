@@ -38,7 +38,7 @@ const pieceNames = {
 
 let selectedSquare = null;
 let gameState = null;
-let playerColor = 'white'; // Player is white, pieces at the bottom of the board
+let playerColor = 'white'; // Player is white, but board is displayed flipped (white at top, black at bottom)
 let isComputerThinking = false;
 let statusElement = null;
 let moveHistoryElement = null;
@@ -51,6 +51,14 @@ let lastMoveSquares = [];
 let loadingOverlay = null;
 let boardWrapper = null;
 let capturedPieces = { white: [], black: [] };
+
+// Hint system variables
+let hintButton = null;
+let learningModeToggle = null;
+let hintLevelSelect = null;
+let hintDisplay = null;
+let currentHint = null;
+let learningModeEnabled = false;
 
 // Initialize the board
 function initializeBoard() {
@@ -78,12 +86,33 @@ function initializeBoard() {
         fetchSkillLevel();
     }
 
+    // Initialize hint system
+    hintButton = document.getElementById('hint-button');
+    learningModeToggle = document.getElementById('learning-mode-toggle');
+    hintLevelSelect = document.getElementById('hint-level-select');
+    hintDisplay = document.getElementById('hint-display');
+
+    if (hintButton) {
+        hintButton.addEventListener('click', requestHint);
+    }
+
+    if (learningModeToggle) {
+        learningModeToggle.addEventListener('change', handleLearningModeToggle);
+    }
+
+    if (hintLevelSelect) {
+        hintLevelSelect.addEventListener('change', handleHintLevelChange);
+    }
+
+    // Fetch initial learning mode settings
+    fetchLearningModeSettings();
+
     // Initialize board wrapper for coordinate labels
     boardWrapper = document.getElementById('board-wrapper');
 
     // Create the squares
-    // Note: We create the board from bottom to top (rank 1 to 8)
-    // This ensures the board is oriented correctly with white at the bottom
+    // Note: We create the board from top to bottom (rank 8 to 1) - flipped for user view
+    // Create the chess board with flipped coordinates (white at top, black at bottom)
     for (let rankIndex = 0; rankIndex < BOARD_SIZE; rankIndex++) {
         for (let fileIndex = 0; fileIndex < BOARD_SIZE; fileIndex++) {
             const square = document.createElement('div');
@@ -91,8 +120,8 @@ function initializeBoard() {
             // Alternate colors for the chess board pattern
             square.classList.add((rankIndex + fileIndex) % 2 === 0 ? 'white' : 'black');
 
-            // Get the square name (e.g., "a1", "e4")
-            const squareName = FILES[fileIndex] + RANKS[7 - rankIndex];
+            // Get the square name (e.g., "a1", "e4") - flipped for white at top
+            const squareName = FILES[fileIndex] + RANKS[rankIndex];
             square.dataset.position = squareName;
             square.addEventListener('click', () => handleSquareClick(square));
 
@@ -111,21 +140,21 @@ function initializeBoard() {
 function addCoordinateLabels() {
     if (!boardWrapper) return;
 
-    // Add file labels (a-h) at the bottom
+    // Add file labels (a-h) at the top (for flipped board)
     FILES.forEach((file, index) => {
         const label = document.createElement('div');
         label.className = 'coordinate-label file-label';
         label.textContent = file;
-        label.style.left = `${(index * 60) + 30}px`;
+        label.style.top = '10px';
         boardWrapper.appendChild(label);
     });
 
-    // Add rank labels (1-8) on the left
+    // Add rank labels (1-8) on the left (for flipped board)
     RANKS.forEach((rank, index) => {
         const label = document.createElement('div');
         label.className = 'coordinate-label rank-label';
         label.textContent = rank;
-        label.style.top = `${((7 - index) * 60) + 30}px`;
+        label.style.top = `${(index * 60) + 30}px`;
         boardWrapper.appendChild(label);
     });
 }
@@ -149,6 +178,9 @@ async function fetchBoardState() {
 
 // Update the board display based on the current game state
 function updateBoard(previousPieces = null) {
+    // Clear hints when board updates
+    clearHintsOnBoardUpdate();
+    
     // Detect captured pieces if we have previous state
     if (previousPieces && gameState && gameState.pieces) {
         detectCapturedPieces(previousPieces, gameState.pieces);
@@ -393,14 +425,13 @@ function handleSquareClick(square) {
 // Make a move and send it to the server
 async function makeMove(from, to) {
     // We need to map the UI coordinates to the server's coordinates
-    // The UI has white pieces at the bottom (a1-h1), but they're displayed at the top (a8-h8)
-    // We need to flip the rank (number) part of the coordinate
+    // The UI has white pieces at the top (a8-h8), but server expects standard (a1-h1)
     const fromFile = from.charAt(0);
     const fromRank = from.charAt(1);
     const toFile = to.charAt(0);
     const toRank = to.charAt(1);
 
-    // Map the rank from UI to server (e.g., d7 -> d2)
+    // Map the rank from UI to server (e.g., d7 -> d2) - flipped mapping
     const fromCoord = fromFile + (9 - parseInt(fromRank));
     const toCoord = toFile + (9 - parseInt(toRank));
 
@@ -871,6 +902,266 @@ function updateSkillDisplay(level, description) {
     if (skillSlider) skillSlider.value = level;
     if (skillValue) skillValue.textContent = level;
     if (skillLabel) skillLabel.textContent = description;
+}
+
+// Hint system functions
+async function requestHint() {
+    if (isComputerThinking) {
+        setStatus('Cannot get hint while computer is thinking...');
+        return;
+    }
+
+    if (!gameState || gameState.is_game_over) {
+        setStatus('Cannot get hint - game is over');
+        return;
+    }
+
+    // Disable hint button during request
+    if (hintButton) hintButton.disabled = true;
+    setStatus('Generating hint...');
+
+    try {
+        const hintLevel = hintLevelSelect ? hintLevelSelect.value : 'basic';
+        const response = await fetch(`${API_URL}/hint`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ level: hintLevel })
+        });
+
+        if (response.ok) {
+            const hint = await response.json();
+            displayHint(hint);
+            setStatus('Hint generated!');
+        } else {
+            const error = await response.json();
+            setStatus(`Error: ${error.error}`);
+        }
+    } catch (error) {
+        console.error('Error requesting hint:', error);
+        setStatus('Error generating hint');
+    } finally {
+        // Re-enable hint button
+        if (hintButton) hintButton.disabled = false;
+    }
+}
+
+function displayHint(hint) {
+    currentHint = hint;
+    
+    if (!hintDisplay) return;
+
+    // Update hint display content
+    const hintMoveElement = hintDisplay.querySelector('.hint-move');
+    const hintExplanationElement = hintDisplay.querySelector('.hint-explanation');
+
+    if (hintMoveElement) {
+        // Convert UCI move to readable notation
+        const moveNotation = formatMoveForDisplay(hint.move);
+        hintMoveElement.textContent = `Suggested move: ${moveNotation}`;
+        
+        // Add category class for styling
+        hintMoveElement.className = 'hint-move';
+        if (hint.category) {
+            hintMoveElement.classList.add(`hint-category-${hint.category}`);
+        }
+    }
+
+    if (hintExplanationElement) {
+        hintExplanationElement.textContent = hint.explanation;
+    }
+
+    // Show hint display
+    hintDisplay.style.display = 'block';
+
+    // Visualize hint on board
+    visualizeHintOnBoard(hint);
+}
+
+function formatMoveForDisplay(uciMove) {
+    if (!uciMove || uciMove.length < 4) return uciMove;
+    
+    const from = uciMove.substring(0, 2);
+    const to = uciMove.substring(2, 4);
+    const promotion = uciMove.length > 4 ? uciMove.substring(4) : '';
+    
+    // Convert to standard algebraic notation (simplified)
+    let notation = `${from}-${to}`;
+    if (promotion) {
+        notation += `=${promotion.toUpperCase()}`;
+    }
+    
+    return notation;
+}
+
+function visualizeHintOnBoard(hint) {
+    // Clear previous hint visualizations
+    clearHintVisualization();
+
+    if (!hint.from_square || !hint.to_square) return;
+
+    // Flip the hint coordinates for user's perspective (white at top, black at bottom)
+    const flippedFromSquare = flipCoordinate(hint.from_square);
+    const flippedToSquare = flipCoordinate(hint.to_square);
+
+    // Highlight the from square
+    const fromSquare = document.querySelector(`[data-position="${flippedFromSquare}"]`);
+    if (fromSquare) {
+        fromSquare.classList.add('hint-highlight');
+    }
+
+    // Highlight the to square
+    const toSquare = document.querySelector(`[data-position="${flippedToSquare}"]`);
+    if (toSquare) {
+        toSquare.classList.add('hint-highlight');
+    }
+
+    // Draw arrow from from to to
+    drawHintArrow(flippedFromSquare, flippedToSquare);
+}
+
+// Helper function to flip coordinates for user perspective
+function flipCoordinate(square) {
+    if (!square || square.length !== 2) return square;
+    
+    const file = square.charAt(0);
+    const rank = square.charAt(1);
+    
+    // Flip the rank: 1->8, 2->7, 3->6, 4->5, 5->4, 6->3, 7->2, 8->1
+    const flippedRank = 9 - parseInt(rank);
+    
+    return file + flippedRank;
+}
+
+function clearHintVisualization() {
+    // Remove hint highlights
+    document.querySelectorAll('.hint-highlight').forEach(square => {
+        square.classList.remove('hint-highlight');
+    });
+
+    // Remove hint arrows
+    document.querySelectorAll('.hint-arrow').forEach(arrow => {
+        arrow.remove();
+    });
+}
+
+function drawHintArrow(fromSquare, toSquare) {
+    const fromElement = document.querySelector(`[data-position="${fromSquare}"]`);
+    const toElement = document.querySelector(`[data-position="${toSquare}"]`);
+    
+    if (!fromElement || !toElement) return;
+
+    const fromRect = fromElement.getBoundingClientRect();
+    const toRect = toElement.getBoundingClientRect();
+    const boardRect = chessboard.getBoundingClientRect();
+
+    // Calculate arrow coordinates relative to board
+    const fromX = fromRect.left + fromRect.width / 2 - boardRect.left;
+    const fromY = fromRect.top + fromRect.height / 2 - boardRect.top;
+    const toX = toRect.left + toRect.width / 2 - boardRect.left;
+    const toY = toRect.top + toRect.height / 2 - boardRect.top;
+
+    // Calculate arrow length and angle
+    const deltaX = toX - fromX;
+    const deltaY = toY - fromY;
+    const length = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+    const angle = Math.atan2(deltaY, deltaX) * 180 / Math.PI;
+
+    // Create arrow element
+    const arrow = document.createElement('div');
+    arrow.className = 'hint-arrow';
+    arrow.style.left = `${fromX}px`;
+    arrow.style.top = `${fromY}px`;
+    arrow.style.width = `${length}px`;
+    arrow.style.transform = `rotate(${angle}deg)`;
+
+    chessboard.appendChild(arrow);
+}
+
+async function handleLearningModeToggle(event) {
+    learningModeEnabled = event.target.checked;
+    
+    try {
+        const hintLevel = hintLevelSelect ? hintLevelSelect.value : 'basic';
+        const response = await fetch(`${API_URL}/learning-mode`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                enabled: learningModeEnabled,
+                hint_level: hintLevel
+            })
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            console.log(`Learning mode ${data.enabled ? 'enabled' : 'disabled'}`);
+            setStatus(`Learning mode ${data.enabled ? 'enabled' : 'disabled'}`);
+        } else {
+            console.error('Failed to set learning mode');
+        }
+    } catch (error) {
+        console.error('Error setting learning mode:', error);
+    }
+}
+
+async function handleHintLevelChange(event) {
+    const hintLevel = event.target.value;
+    
+    try {
+        const response = await fetch(`${API_URL}/learning-mode`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                enabled: learningModeEnabled,
+                hint_level: hintLevel
+            })
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            console.log(`Hint level set to ${data.hint_level}`);
+        } else {
+            console.error('Failed to set hint level');
+        }
+    } catch (error) {
+        console.error('Error setting hint level:', error);
+    }
+}
+
+async function fetchLearningModeSettings() {
+    try {
+        const response = await fetch(`${API_URL}/learning-mode`);
+        
+        if (response.ok) {
+            const data = await response.json();
+            learningModeEnabled = data.enabled;
+            
+            if (learningModeToggle) {
+                learningModeToggle.checked = data.enabled;
+            }
+            
+            if (hintLevelSelect) {
+                hintLevelSelect.value = data.hint_level;
+            }
+            
+            console.log(`Learning mode: ${data.enabled ? 'enabled' : 'disabled'}, hint level: ${data.hint_level}`);
+        }
+    } catch (error) {
+        console.error('Error fetching learning mode settings:', error);
+    }
+}
+
+// Clear hint visualization when board is updated
+function clearHintsOnBoardUpdate() {
+    clearHintVisualization();
+    if (hintDisplay && hintDisplay.style.display !== 'none') {
+        hintDisplay.style.display = 'none';
+    }
 }
 
 // Initialize the board when the page loads
