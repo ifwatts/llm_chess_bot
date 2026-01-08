@@ -149,6 +149,9 @@ computer_player = ComputerPlayer(chess_board, skill_level=5)
 | `/reset` | POST | Resets game to initial state |
 | `/skill-level` | GET | Returns current AI skill level |
 | `/skill-level` | POST | Updates AI skill level (1-10) |
+| `/hint` | POST | Generates a hint for current position |
+| `/learning-mode` | GET | Returns learning mode settings |
+| `/learning-mode` | POST | Updates learning mode settings |
 
 **Request Flow** (app.py:41-80):
 1. Receive move from frontend
@@ -209,10 +212,13 @@ Player (Abstract Base)
 - Simple wrapper for human moves
 - Delegates move validation to ChessBoard
 
-**ComputerPlayer Class** (player.py:18-310):
+**ComputerPlayer Class** (player.py:18-508):
 - Generates AI moves using LLM
 - Implements sophisticated skill tuning system
 - Handles LLM communication and error recovery
+- **NEW**: Generates educational hints with explanations
+- **NEW**: Categorizes moves by tactical type
+- **NEW**: Provides skill-appropriate learning content
 
 **Key Attributes**:
 - `skill_level` (1-10) - Difficulty setting
@@ -436,6 +442,187 @@ return score
 ```
 
 After scoring, moves are sorted and filtered based on skill level.
+
+## Learning Mode & Hint System
+
+The Learning Mode provides educational assistance through intelligent hint generation and visual feedback.
+
+### Hint Generation Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Hint Request Flow                        │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Frontend: User clicks "Get Hint"                           │
+│  - Sends POST /hint with hint level                         │
+│  - Shows loading state                                      │
+└──────┬──────────────────────────────────────────────────────┘
+       │
+       ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Backend: /hint endpoint                                    │
+│  - Validates hint level                                     │
+│  - Calls computer_player.get_hint()                        │
+└──────┬──────────────────────────────────────────────────────┘
+       │
+       ▼
+┌─────────────────────────────────────────────────────────────┐
+│  ComputerPlayer.get_hint()                                  │
+│  - Analyzes current position                                │
+│  - Generates best move using master-level LLM               │
+│  - Creates skill-appropriate explanation                    │
+│  - Categorizes move type                                   │
+└──────┬──────────────────────────────────────────────────────┘
+       │
+       ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Frontend: Display Hint                                     │
+│  - Shows move notation and explanation                      │
+│  - Highlights squares on board                             │
+│  - Draws animated arrow                                    │
+│  - Color-codes by category                                 │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Hint Components
+
+#### 1. Hint Generation (player.py:312-505)
+
+**Key Methods**:
+- `get_hint(board, hint_level)` - Main hint generation interface
+- `_get_best_move_for_hint()` - Always uses master-level analysis
+- `_generate_hint_explanation()` - Creates educational explanations
+- `_categorize_move()` - Identifies move types for UI styling
+
+**Hint Levels**:
+- **Basic**: Simple explanations (1-2 sentences), focus on main ideas
+- **Intermediate**: Tactical details (2-3 sentences), includes principles
+- **Advanced**: Strategic analysis (3-4 sentences), considers variations
+
+#### 2. Move Categorization System
+
+**Categories & Colors**:
+```python
+categories = {
+    'checkmate': '#805ad5',      # Purple - Game ending
+    'check': '#dd6b20',          # Orange - King attack
+    'capture': '#e53e3e',        # Red - Material gain
+    'castling': '#d69e2e',       # Yellow - King safety
+    'promotion': '#9f7aea',      # Pink - Pawn upgrade
+    'center': '#38a169',         # Green - Central control
+    'development': '#3182ce',    # Blue - Piece activity
+    'general': '#718096'         # Gray - Positional
+}
+```
+
+#### 3. Visual Feedback System
+
+**Board Visualization**:
+- Green highlighting on suggested squares
+- Animated arrows showing move direction
+- Light bulb icons with pulse animation
+- Color-coded explanation boxes
+
+**UI Components**:
+- Hint display panel with smooth animations
+- Category-specific styling
+- Learning mode toggle
+- Hint level selector
+
+### Learning Mode Settings
+
+**API Endpoints**:
+- `GET /learning-mode` - Retrieve current settings
+- `POST /learning-mode` - Update enabled state and hint level
+
+**State Management**:
+```javascript
+// Frontend state
+let learningModeEnabled = false;
+let currentHintLevel = 'basic';
+let currentHint = null;
+
+// Backend state (ComputerPlayer)
+computer_player.learning_mode = enabled;
+computer_player.hint_level = hint_level;
+```
+
+### Educational Features
+
+#### 1. Adaptive Explanations
+
+The system adjusts explanation complexity based on selected hint level:
+
+**Basic Example**: "Control the center - this is a key strategic principle in chess."
+
+**Intermediate Example**: "Develop your knight to f3 to control the center and prepare for castling. This move follows opening principles and creates threats."
+
+**Advanced Example**: "Develop your knight to f3, controlling key central squares (d4, e5) while preparing rapid castling. This move supports central control, creates tactical possibilities, and maintains flexibility for your pawn structure."
+
+#### 2. Move Type Recognition
+
+The system automatically identifies and explains different types of moves:
+
+- **Tactical Moves**: Captures, checks, forks, pins
+- **Strategic Moves**: Development, center control, prophylaxis
+- **Special Moves**: Castling, promotion, en passant
+- **Endgame Moves**: King activity, pawn promotion, zugzwang
+
+#### 3. Error Handling & Fallbacks
+
+**LLM Failure Recovery**:
+- Fallback to rule-based explanations
+- Random move selection with basic guidance
+- Graceful degradation without breaking functionality
+
+**Validation**:
+- Move legality verification
+- Hint level validation
+- Position analysis (game over detection)
+
+### Integration Points
+
+#### 1. Board Update Integration
+
+Hints are automatically cleared when:
+- Player makes a move
+- AI responds
+- Game is reset
+- Board state changes
+
+```javascript
+function updateBoard(previousPieces = null) {
+    // Clear hints when board updates
+    clearHintsOnBoardUpdate();
+    // ... existing board update logic
+}
+```
+
+#### 2. Skill System Integration
+
+Hint generation uses master-level analysis regardless of AI skill level:
+```python
+def _get_best_move_for_hint(self, board, legal_moves):
+    original_skill = self.skill_level
+    self.skill_level = 10  # Temporarily use master level
+    try:
+        best_move = self._get_llm_move(board, legal_moves)
+        return best_move
+    finally:
+        self.skill_level = original_skill
+```
+
+#### 3. Testing Integration
+
+Comprehensive test coverage includes:
+- Hint generation validation
+- Move legality verification
+- Category classification testing
+- Learning mode settings testing
+- Edge case handling (game over, invalid positions)
 
 ## API Specification
 

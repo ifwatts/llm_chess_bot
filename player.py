@@ -309,4 +309,199 @@ class ComputerPlayer(Player):
 
         return score
 
+    def get_hint(self, board, hint_level='basic'):
+        """
+        Generate a hint for the current position with explanation.
+        hint_level: 'basic', 'intermediate', 'advanced'
+        """
+        try:
+            board_state = board.get_board_state()
+            legal_moves = board_state['legal_moves']
+            
+            if not legal_moves:
+                return {
+                    'move': None,
+                    'explanation': 'No legal moves available in this position.',
+                    'category': 'game_over'
+                }
+            
+            # Get the best move with full analysis
+            best_move = self._get_best_move_for_hint(board, legal_moves)
+            
+            # Generate explanation based on hint level
+            explanation = self._generate_hint_explanation(board, best_move, legal_moves, hint_level)
+            
+            # Categorize the move type
+            category = self._categorize_move(board.board, best_move)
+            
+            return {
+                'move': best_move,
+                'explanation': explanation,
+                'category': category,
+                'from_square': best_move[:2] if len(best_move) >= 4 else None,
+                'to_square': best_move[2:4] if len(best_move) >= 4 else None
+            }
+            
+        except Exception as e:
+            print(f"Error generating hint: {str(e)}")
+            # Fallback to a random move with basic explanation
+            legal_moves = board.get_board_state()['legal_moves']
+            if legal_moves:
+                random_move = random.choice(legal_moves)
+                return {
+                    'move': random_move,
+                    'explanation': 'Consider this move. Look for tactical opportunities and develop your pieces.',
+                    'category': 'development',
+                    'from_square': random_move[:2],
+                    'to_square': random_move[2:4]
+                }
+            return None
+    
+    def _get_best_move_for_hint(self, board, legal_moves):
+        """Get the best move for hint generation (always use master level analysis)"""
+        # Temporarily set skill to master for best analysis
+        original_skill = self.skill_level
+        self.skill_level = 10
+        
+        try:
+            # Use the existing LLM move generation but with master skill
+            best_move = self._get_llm_move(board, legal_moves)
+            return best_move
+        finally:
+            # Restore original skill level
+            self.skill_level = original_skill
+    
+    def _generate_hint_explanation(self, board, move, legal_moves, hint_level):
+        """Generate an explanation for the suggested move"""
+        board_state = board.get_board_state()
+        fen = board_state['fen']
+        
+        # Adjust explanation complexity based on hint level
+        complexity_instructions = {
+            'basic': "Explain this move in simple terms for a beginner. Focus on the main idea in 1-2 sentences.",
+            'intermediate': "Explain this move with some tactical detail. Mention basic principles and consequences in 2-3 sentences.",
+            'advanced': "Provide a detailed explanation including tactical and strategic considerations. Mention potential follow-up moves in 3-4 sentences."
+        }
+        
+        instruction = complexity_instructions.get(hint_level, complexity_instructions['intermediate'])
+        
+        prompt = f"""
+        {instruction}
+        
+        Chess position (FEN): {fen}
+        
+        You are playing as {self.color}. The suggested move is: {move}
+        All legal moves are: {', '.join(legal_moves)}
+        
+        Explain why {move} is a good move. Focus on chess principles like:
+        - Piece development
+        - Center control
+        - Tactical opportunities (captures, checks, threats)
+        - King safety
+        - Positional advantages
+        
+        Keep your explanation educational and encouraging. Do not mention that you are an AI.
+        """
+        
+        try:
+            response = self._call_ollama_api(prompt)
+            return response.strip()
+        except Exception as e:
+            print(f"Error generating explanation: {str(e)}")
+            # Fallback explanation based on move type
+            return self._get_fallback_explanation(board.board, move)
+    
+    def _get_fallback_explanation(self, board, move):
+        """Generate a basic explanation when LLM fails"""
+        try:
+            chess_move = chess.Move.from_uci(move)
+            
+            # Check for basic tactical elements
+            if board.is_capture(chess_move):
+                captured_piece = board.piece_at(chess_move.to_square)
+                if captured_piece:
+                    piece_names = {
+                        chess.PAWN: "pawn", chess.KNIGHT: "knight", 
+                        chess.BISHOP: "bishop", chess.ROOK: "rook",
+                        chess.QUEEN: "queen", chess.KING: "king"
+                    }
+                    return f"Capture the {piece_names.get(captured_piece.piece_type, 'piece')} to gain material advantage."
+            
+            # Make the move temporarily to check for other features
+            board.push(chess_move)
+            
+            if board.is_check():
+                board.pop()
+                return "Deliver check to put pressure on the opponent's king."
+            
+            if board.is_checkmate():
+                board.pop()
+                return "Checkmate! This move ends the game."
+            
+            board.pop()
+            
+            # Check for center control
+            center_squares = [chess.E4, chess.E5, chess.D4, chess.D5]
+            if chess_move.to_square in center_squares:
+                return "Control the center - this is a key strategic principle in chess."
+            
+            # Check for development
+            from_rank = chess.square_rank(chess_move.from_square)
+            if self.color == 'black' and from_rank == 7:
+                return "Develop your piece from the back rank to get it into the game."
+            elif self.color == 'white' and from_rank == 0:
+                return "Develop your piece from the back rank to get it into the game."
+            
+            return "This move improves your position and follows good chess principles."
+            
+        except Exception:
+            return "This move follows solid chess principles and improves your position."
+    
+    def _categorize_move(self, board, move):
+        """Categorize the type of move for UI styling and filtering"""
+        try:
+            chess_move = chess.Move.from_uci(move)
+            
+            # Check for checkmate
+            board.push(chess_move)
+            if board.is_checkmate():
+                board.pop()
+                return 'checkmate'
+            
+            # Check for check
+            if board.is_check():
+                board.pop()
+                return 'check'
+            
+            board.pop()
+            
+            # Check for captures
+            if board.is_capture(chess_move):
+                return 'capture'
+            
+            # Check for castling
+            if board.is_castling(chess_move):
+                return 'castling'
+            
+            # Check for promotions
+            if chess_move.promotion:
+                return 'promotion'
+            
+            # Check for center moves
+            center_squares = [chess.E4, chess.E5, chess.D4, chess.D5]
+            if chess_move.to_square in center_squares:
+                return 'center'
+            
+            # Check for development
+            from_rank = chess.square_rank(chess_move.from_square)
+            if self.color == 'black' and from_rank == 7:
+                return 'development'
+            elif self.color == 'white' and from_rank == 0:
+                return 'development'
+            
+            return 'general'
+            
+        except Exception:
+            return 'general'
+
 # Made with Bob

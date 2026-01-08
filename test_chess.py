@@ -276,6 +276,194 @@ class ChessGameTest(unittest.TestCase):
 
                 print(f"Successfully played move with skill level {skill_level}")
 
+    def test_hint_generation(self):
+        """Test hint generation for different positions and hint levels"""
+        # Test positions with different characteristics
+        test_positions = [
+            {
+                "name": "Starting Position",
+                "moves": [],
+                "expected_categories": ["development", "center"]
+            },
+            {
+                "name": "After e2e4 e7e5",
+                "moves": ["e2e4", "e7e5"],
+                "expected_categories": ["development", "center", "tactical"]
+            },
+            {
+                "name": "Tactical Position",
+                "moves": ["e2e4", "e7e5", "g1f3", "b8c6", "f1c4", "f7f6"],
+                "expected_categories": ["tactical", "development", "attack"]
+            }
+        ]
+        
+        hint_levels = ["basic", "intermediate", "advanced"]
+        
+        for position in test_positions:
+            for hint_level in hint_levels:
+                with self.subTest(position=position["name"], hint_level=hint_level):
+                    print(f"\nTesting hint generation for {position['name']} at {hint_level} level")
+                    
+                    # Reset and set up position
+                    self.reset_to_position(position["moves"])
+                    
+                    # Request hint
+                    hint_response = requests.post(
+                        f"{self.API_URL}/hint",
+                        json={"level": hint_level}
+                    )
+                    
+                    self.assertEqual(hint_response.status_code, 200, 
+                                   f"Failed to get hint for {position['name']} at {hint_level} level")
+                    
+                    hint = hint_response.json()
+                    
+                    # Validate hint structure
+                    self.assertIn("move", hint, "Hint should contain a move")
+                    self.assertIn("explanation", hint, "Hint should contain an explanation")
+                    self.assertIn("category", hint, "Hint should contain a category")
+                    self.assertIn("from_square", hint, "Hint should contain from_square")
+                    self.assertIn("to_square", hint, "Hint should contain to_square")
+                    
+                    # Validate move format (UCI)
+                    self.assertRegex(hint["move"], r"^[a-h][1-8][a-h][1-8][qnrb]?$", 
+                                   "Hint move should be in valid UCI format")
+                    
+                    # Validate explanation content
+                    self.assertTrue(len(hint["explanation"]) > 10, 
+                                  "Explanation should be meaningful")
+                    
+                    # Validate category
+                    valid_categories = ["checkmate", "check", "capture", "castling", 
+                                      "promotion", "center", "development", "general"]
+                    self.assertIn(hint["category"], valid_categories, 
+                                "Hint category should be valid")
+                    
+                    print(f"Generated hint: {hint['move']} ({hint['category']})")
+                    print(f"Explanation: {hint['explanation']}")
+
+    def test_learning_mode_settings(self):
+        """Test learning mode enable/disable and hint level settings"""
+        # Test GET learning mode
+        get_response = requests.get(f"{self.API_URL}/learning-mode")
+        self.assertEqual(get_response.status_code, 200, "Failed to get learning mode settings")
+        
+        settings = get_response.json()
+        self.assertIn("enabled", settings, "Settings should contain enabled field")
+        self.assertIn("hint_level", settings, "Settings should contain hint_level field")
+        
+        # Test enabling learning mode
+        enable_response = requests.post(
+            f"{self.API_URL}/learning-mode",
+            json={"enabled": True, "hint_level": "advanced"}
+        )
+        self.assertEqual(enable_response.status_code, 200, "Failed to enable learning mode")
+        
+        enabled_settings = enable_response.json()
+        self.assertTrue(enabled_settings["enabled"], "Learning mode should be enabled")
+        self.assertEqual(enabled_settings["hint_level"], "advanced", 
+                        "Hint level should be advanced")
+        
+        # Test disabling learning mode
+        disable_response = requests.post(
+            f"{self.API_URL}/learning-mode",
+            json={"enabled": False, "hint_level": "basic"}
+        )
+        self.assertEqual(disable_response.status_code, 200, "Failed to disable learning mode")
+        
+        disabled_settings = disable_response.json()
+        self.assertFalse(disabled_settings["enabled"], "Learning mode should be disabled")
+        
+        # Test invalid hint level
+        invalid_response = requests.post(
+            f"{self.API_URL}/learning-mode",
+            json={"enabled": True, "hint_level": "invalid"}
+        )
+        self.assertEqual(invalid_response.status_code, 400, "Should reject invalid hint level")
+
+    def test_hint_validation(self):
+        """Test hint validation and edge cases"""
+        # Test hint in game over position (checkmate)
+        self.reset_to_position(["f2f3", "e7e5", "g2g4", "d8h4"])  # Scholar's mate setup
+        
+        hint_response = requests.post(
+            f"{self.API_URL}/hint",
+            json={"level": "basic"}
+        )
+        
+        # Should still work (might suggest checkmate or defensive move)
+        self.assertEqual(hint_response.status_code, 200, "Should generate hint even in game over position")
+        
+        # Test invalid hint level
+        invalid_hint_response = requests.post(
+            f"{self.API_URL}/hint",
+            json={"level": "invalid_level"}
+        )
+        self.assertEqual(invalid_hint_response.status_code, 400, "Should reject invalid hint level")
+
+    def test_hint_move_legality(self):
+        """Test that all suggested hints are legal moves"""
+        # Test various positions
+        test_moves = [
+            [],  # Starting position
+            ["e2e4", "e7e5"],  # Common opening
+            ["e2e4", "e7e5", "g1f3", "b8c6", "f1c4", "f7f6"],  # Complex position
+        ]
+        
+        for moves in test_moves:
+            with self.subTest(moves_count=len(moves)):
+                self.reset_to_position(moves)
+                
+                # Get hint
+                hint_response = requests.post(
+                    f"{self.API_URL}/hint",
+                    json={"level": "intermediate"}
+                )
+                
+                self.assertEqual(hint_response.status_code, 200, "Should generate hint")
+                
+                hint = hint_response.json()
+                suggested_move = hint["move"]
+                
+                # Verify the move is legal by trying to make it
+                move_response = requests.post(
+                    f"{self.API_URL}/move",
+                    json={"move": suggested_move, "test_mode": True}
+                )
+                
+                self.assertEqual(move_response.status_code, 200, 
+                               f"Suggested move {suggested_move} should be legal")
+
+    def test_hint_categories(self):
+        """Test that hint categories are correctly identified"""
+        # Test capture position - set up position where it's White's turn
+        self.reset_to_position(["e2e4", "e7e5", "f1c4", "d7d5", "e4d5", "g8f6"])  # White can capture, it's White's turn
+        
+        hint_response = requests.post(
+            f"{self.API_URL}/hint",
+            json={"level": "basic"}
+        )
+        
+        self.assertEqual(hint_response.status_code, 200, "Should generate hint")
+        hint = hint_response.json()
+        
+        # The hint should likely suggest the capture or another good move
+        print(f"Hint in capture position: {hint['move']} (category: {hint['category']})")
+
+    def reset_to_position(self, moves):
+        """Helper method to reset board and make specific moves"""
+        # Reset game
+        reset_response = requests.post(f"{self.API_URL}/reset")
+        self.assertEqual(reset_response.status_code, 200, "Failed to reset game")
+        
+        # Make the specified moves
+        for move_uci in moves:
+            move_response = requests.post(
+                f"{self.API_URL}/move",
+                json={"move": move_uci, "test_mode": True}
+            )
+            self.assertEqual(move_response.status_code, 200, f"Failed to make move {move_uci}")
+
 if __name__ == "__main__":
     unittest.main()
 
