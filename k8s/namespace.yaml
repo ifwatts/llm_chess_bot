@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: llm-chess-bot
+  labels:
+    name: llm-chess-bot
+    app: llm-chess-bot

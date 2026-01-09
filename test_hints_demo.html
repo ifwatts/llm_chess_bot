@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Hints Feature</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; border-radius: 8px; }
+        .success { background-color: #d4edda; border-color: #c3e6cb; }
+        .info { background-color: #d1ecf1; border-color: #bee5eb; }
+        .warning { background-color: #fff3cd; border-color: #ffeaa7; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+        .result { margin: 10px 0; padding: 10px; background-color: #f8f9fa; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <h1>🎯 Testing the Hints Feature</h1>
+    
+    <div class="test-section info">
+        <h2>📍 What You Should See in the Main Application</h2>
+        <p>Open <a href="http://localhost:5001" target="_blank">http://localhost:5001</a> to see the actual chess application with hints.</p>
+        
+        <h3>Look for these elements:</h3>
+        <ul>
+            <li>🟢 <strong>"Get Hint" Button</strong> - Green button below the chess board</li>
+            <li>🎓 <strong>Learning Mode Section</strong> - Toggle and hint level selector</li>
+            <li>💡 <strong>Hint Display Panel</strong> - Appears when you request a hint</li>
+        </ul>
+    </div>
+
+    <div class="test-section">
+        <h2>🧪 API Testing (Backend Verification)</h2>
+        <p>Click these buttons to test the backend API directly:</p>
+        
+        <button onclick="testHint()">Test Hint API</button>
+        <button onclick="testLearningMode()">Test Learning Mode API</button>
+        <button onclick="testLearningModeOn()">Enable Learning Mode</button>
+        <button onclick="testReset()">Reset Game</button>
+        
+        <div id="api-result" class="result" style="display: none;"></div>
+    </div>
+
+    <div class="test-section success">
+        <h2>✅ How to Use Hints in the Main Application</h2>
+        
+        <h3>Step 1: Open the Application</h3>
+        <p>Navigate to <a href="http://localhost:5001" target="_blank">http://localhost:5001</a></p>
+        
+        <h3>Step 2: Make Your First Move</h3>
+        <p>Click a white piece, then click where you want to move it.</p>
+        
+        <h3>Step 3: Request a Hint</h3>
+        <p>When it's your turn again, click the <strong>"Get Hint"</strong> button.</p>
+        
+        <h3>Step 4: See the Visual Feedback</h3>
+        <p>You should see:</p>
+        <ul>
+            <li>🟩 <strong>Green highlighting</strong> on suggested squares</li>
+            <li>💡 <strong>Light bulb icons</strong> with pulsing animation</li>
+            <li>➡️ <strong>Animated arrow</strong> showing move direction</li>
+            <li>📝 <strong>Explanation text</strong> in the hint display panel</li>
+        </ul>
+        
+        <h3>Step 5: Use the Suggested Move</h3>
+        <p>Click the highlighted piece and destination to make the suggested move.</p>
+    </div>
+
+    <div class="test-section warning">
+        <h2>⚠️ Important Notes</h2>
+        <ul>
+            <li><strong>Hints only work on your turn</strong> (when playing as White)</li>
+            <li><strong>Hints disappear automatically</strong> after you make a move</li>
+            <li><strong>LLM may use fallback explanations</strong> due to memory constraints</li>
+            <li><strong>Learning Mode toggle</strong> enhances but isn't required for hints</li>
+        </ul>
+    </div>
+
+    <script>
+        async function testHint() {
+            const resultDiv = document.getElementById('api-result');
+            resultDiv.style.display = 'block';
+            resultDiv.innerHTML = 'Testing hint API...';
+            
+            try {
+                const response = await fetch('http://localhost:5001/hint', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ level: 'basic' })
+                });
+                
+                const hint = await response.json();
+                resultDiv.innerHTML = `
+                    <h3>✅ Hint API Response:</h3>
+                    <p><strong>Move:</strong> ${hint.move}</p>
+                    <p><strong>From:</strong> ${hint.from_square}</p>
+                    <p><strong>To:</strong> ${hint.to_square}</p>
+                    <p><strong>Category:</strong> ${hint.category}</p>
+                    <p><strong>Explanation:</strong> ${hint.explanation}</p>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `<h3>❌ Error:</h3><p>${error.message}</p>`;
+            }
+        }
+        
+        async function testLearningMode() {
+            const resultDiv = document.getElementById('api-result');
+            resultDiv.style.display = 'block';
+            resultDiv.innerHTML = 'Testing learning mode API...';
+            
+            try {
+                const response = await fetch('http://localhost:5001/learning-mode');
+                const settings = await response.json();
+                
+                resultDiv.innerHTML = `
+                    <h3>✅ Learning Mode Settings:</h3>
+                    <p><strong>Enabled:</strong> ${settings.enabled}</p>
+                    <p><strong>Hint Level:</strong> ${settings.hint_level}</p>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `<h3>❌ Error:</h3><p>${error.message}</p>`;
+            }
+        }
+        
+        async function testLearningModeOn() {
+            const resultDiv = document.getElementById('api-result');
+            resultDiv.style.display = 'block';
+            resultDiv.innerHTML = 'Enabling learning mode...';
+            
+            try {
+                const response = await fetch('http://localhost:5001/learning-mode', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled: true, hint_level: 'intermediate' })
+                });
+                
+                const settings = await response.json();
+                
+                resultDiv.innerHTML = `
+                    <h3>✅ Learning Mode Updated:</h3>
+                    <p><strong>Enabled:</strong> ${settings.enabled}</p>
+                    <p><strong>Hint Level:</strong> ${settings.hint_level}</p>
+                    <p><strong>Success:</strong> ${settings.success}</p>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `<h3>❌ Error:</h3><p>${error.message}</p>`;
+            }
+        }
+        
+        async function testReset() {
+            const resultDiv = document.getElementById('api-result');
+            resultDiv.style.display = 'block';
+            resultDiv.innerHTML = 'Resetting game...';
+            
+            try {
+                const response = await fetch('http://localhost:5001/reset', { method: 'POST' });
+                const gameState = await response.json();
+                
+                resultDiv.innerHTML = `
+                    <h3>✅ Game Reset:</h3>
+                    <p><strong>Turn:</strong> ${gameState.turn}</p>
+                    <p><strong>Legal Moves:</strong> ${gameState.legal_moves.length} available</p>
+                    <p><strong>Game Over:</strong> ${gameState.is_game_over}</p>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `<h3>❌ Error:</h3><p>${error.message}</p>`;
+            }
+        }
+    </script>
+</body>
+</html>

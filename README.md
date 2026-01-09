@@ -41,13 +41,15 @@ An interactive web-based chess application featuring an AI opponent powered by a
 
 ## Quick Start
 
-### 1. Clone the Repository
+### Option 1: Local Podman/Docker Deployment
+
+#### 1. Clone the Repository
 ```bash
 git clone https://github.com/yourusername/llm_chess_bot.git
 cd llm_chess_bot
 ```
 
-### 2. Build and Deploy
+#### 2. Build and Deploy
 
 **Using Podman (Recommended):**
 ```bash
@@ -73,7 +75,7 @@ docker-compose up -d
 docker-compose ps
 ```
 
-### 3. Automatic Model Download
+#### 3. Automatic Model Download
 
 The llama2 model (approximately 3.8GB) will be automatically downloaded on first startup. This may take several minutes depending on your internet connection. You can monitor the download progress:
 
@@ -87,7 +89,7 @@ docker logs -f llm_chess_bot_ollama_1
 
 Wait until you see "Ollama is ready!" in the logs before proceeding.
 
-### 4. Access the Application
+#### 4. Access the Application
 
 Open your web browser and navigate to:
 ```
@@ -95,6 +97,93 @@ http://localhost:5001
 ```
 
 You should see the chess board ready to play!
+
+### Option 2: OpenShift Cluster Deployment
+
+#### Prerequisites
+
+- **OpenShift CLI (oc)**: Install from [OpenShift CLI documentation](https://docs.openshift.com/container-platform/4.11/cli_reference/openshift_cli/getting-started-cli.html)
+- **Cluster Access**: Admin or developer access to an OpenShift cluster
+- **.env Configuration**: Create a `.env` file with cluster credentials
+
+#### 1. Configure Cluster Access
+
+Create a `.env` file in the project root with your OpenShift cluster configuration:
+
+```bash
+# OpenShift Cluster Configuration
+OCP_CONSOLE_URL=https://console-openshift-console.apps.your-cluster.com/
+OCP_API_URL=https://api.your-cluster.com:6443
+OCP_USERNAME=your-username
+OCP_PASSWORD=your-password
+OCP_SKIP_TLS_VERIFY=true
+```
+
+**Note:** Replace the values with your actual cluster details. The `OCP_SKIP_TLS_VERIFY=true` is useful for development clusters with self-signed certificates.
+
+#### 2. Deploy to OpenShift
+
+Run the automated deployment script:
+
+```bash
+# Make the script executable
+chmod +x deploy-ocp.sh
+
+# Deploy to OpenShift
+./deploy-ocp.sh
+```
+
+The script will:
+- Login to your OpenShift cluster
+- Create a dedicated namespace (`llm-chess-bot`)
+- Build and push container images to the internal registry
+- Deploy the chess application and Ollama service
+- Configure network policies for secure access
+- Pull the llama2 model
+- Display the application URL when complete
+
+#### 3. Access the Deployed Application
+
+After deployment completes, the script will display the application URL. The app will be accessible via an OpenShift Route (HTTPS endpoint).
+
+Example output:
+```
+🎮 Chess App URL: https://chess-app-llm-chess-bot.apps.your-cluster.com
+```
+
+#### 4. OpenShift Management Commands
+
+```bash
+# View application logs
+oc logs -f deployment/chess-app -n llm-chess-bot
+
+# View Ollama service logs
+oc logs -f deployment/ollama -n llm-chess-bot
+
+# Get shell access to the chess app
+oc exec -it deployment/chess-app -n llm-chess-bot -- bash
+
+# Check deployment status
+oc get pods -n llm-chess-bot
+
+# Scale the application
+oc scale deployment chess-app --replicas=3 -n llm-chess-bot
+
+# Delete the entire deployment
+oc delete namespace llm-chess-bot
+```
+
+#### 5. OpenShift-Specific Features
+
+The deployment includes:
+
+- **High Availability**: 2 replicas of the chess application
+- **Persistent Storage**: 10GB PVC for Ollama model storage
+- **Network Policies**: Secure traffic management between services
+- **Resource Limits**: Memory and CPU constraints for stability
+- **Health Checks**: Liveness and readiness probes
+- **TLS Termination**: Automatic HTTPS via OpenShift Routes
+- **Monitoring**: Compatible with OpenShift monitoring stack
 
 ## How to Play
 
@@ -326,37 +415,92 @@ llm_chess_bot/
 ├── docker-compose.yml    # Container orchestration
 ├── Dockerfile            # Chess app container
 ├── requirements.txt      # Python dependencies
+├── deploy.sh             # Local Podman/Docker deployment script
+├── deploy-ocp.sh         # OpenShift cluster deployment script
+├── .env                  # Environment variables (OCP cluster config)
+├── k8s/                  # Kubernetes manifests for OCP deployment
+│   ├── namespace.yaml
+│   ├── chess-app-deployment.yaml
+│   ├── ollama-deployment.yaml
+│   └── network-policy.yaml
+├── ollama/               # Ollama service configuration
+│   └── Dockerfile.ollama
 ├── README.md             # This file
 └── ARCHITECTURE.md       # Detailed architecture documentation
 ```
 
 ## Troubleshooting
 
-### Application Won't Start
+### Local Deployment Issues
+
+#### Application Won't Start
 - **Check containers**: `podman-compose ps` or `docker-compose ps`
 - **View logs**: `podman-compose logs` or `docker-compose logs`
 - **Port conflict**: Ensure port 5001 is not in use
 
-### Can't Connect to Ollama
+#### Can't Connect to Ollama
 - **Check Ollama container**: `podman logs llm_chess_bot_ollama_1`
 - **Verify model**: `podman exec -it llm_chess_bot_ollama_1 ollama list`
 - **Restart containers**: `podman-compose restart`
 
-### AI Moves Are Slow
+#### AI Moves Are Slow
 - LLM processing takes 3-10 seconds per move (normal behavior)
 - First moves may be slower due to model initialization
 - Consider using a faster model like "mistral" for quicker responses
 
-### Board Not Displaying
+#### Board Not Displaying
 - Check browser console for JavaScript errors (F12)
 - Ensure JavaScript is enabled
 - Try hard refresh (Ctrl+Shift+R or Cmd+Shift+R)
 - Clear browser cache
 
-### Tests Failing
+#### Tests Failing
 - Ensure app is running on port 5001
 - Check that the board state matches expected values
 - Verify test mode is enabled in move requests
+
+### OpenShift Deployment Issues
+
+#### Login Failures
+- **Verify credentials**: Check `.env` file contains correct username/password
+- **API URL**: Ensure `OCP_API_URL` is accessible from your network
+- **TLS Certificate**: If using self-signed certs, set `OCP_SKIP_TLS_VERIFY=true`
+
+#### Build Failures
+- **Check build logs**: `oc get builds -n llm-chess-bot` and `oc logs build/<build-name>`
+- **Registry access**: Ensure you have permissions to push to the internal registry
+- **Dockerfile**: Verify Dockerfile syntax and dependencies
+
+#### Pod Issues
+- **Check pod status**: `oc get pods -n llm-chess-bot`
+- **View pod logs**: `oc logs -f <pod-name> -n llm-chess-bot`
+- **Describe pod**: `oc describe pod <pod-name> -n llm-chess-bot`
+- **Resource limits**: Check if pods are hitting memory/CPU limits
+
+#### Network Issues
+- **Route status**: `oc get routes -n llm-chess-bot`
+- **Service connectivity**: `oc get svc -n llm-chess-bot`
+- **Network policies**: Verify network policies allow required traffic
+- **DNS resolution**: Check if services can resolve each other
+
+#### Model Download Issues
+- **Storage space**: Ensure PVC has enough space (default 10GB)
+- **Network connectivity**: Verify cluster can download models from internet
+- **Manual download**: `oc exec -it deployment/ollama -n llm-chess-bot -- ollama pull llama2`
+
+#### Performance Issues
+- **Resource scaling**: Increase CPU/memory limits in deployment manifests
+- **Replica count**: Scale chess app: `oc scale deployment chess-app --replicas=3 -n llm-chess-bot`
+- **Node resources**: Check cluster node utilization
+
+#### Cleanup and Redeploy
+```bash
+# Delete entire namespace (cleanup)
+oc delete namespace llm-chess-bot
+
+# Redeploy from scratch
+./deploy-ocp.sh
+```
 
 ## Development
 

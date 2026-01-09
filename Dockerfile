@@ -1,4 +1,5 @@
-FROM docker.io/library/python:3.11-alpine
+# Try to use internal registry first, fallback to public registry
+FROM image-registry.openshift-image-registry.svc:5000/llm-chess-bot/python-311:latest
 
 WORKDIR /app
 

@@ -244,7 +244,7 @@ function updateCapturedDisplay() {
     const whiteCapturedList = document.querySelector('#white-captured .captured-list');
     if (whiteCapturedList) {
         whiteCapturedList.innerHTML = '';
-        capturedPieces.white.forEach(piece => {
+        capturedPieces.black.forEach(piece => {
             const pieceSpan = document.createElement('span');
             pieceSpan.className = 'captured-piece';
             pieceSpan.textContent = piece;
@@ -256,7 +256,7 @@ function updateCapturedDisplay() {
     const blackCapturedList = document.querySelector('#black-captured .captured-list');
     if (blackCapturedList) {
         blackCapturedList.innerHTML = '';
-        capturedPieces.black.forEach(piece => {
+        capturedPieces.white.forEach(piece => {
             const pieceSpan = document.createElement('span');
             pieceSpan.className = 'captured-piece';
             pieceSpan.textContent = piece;
