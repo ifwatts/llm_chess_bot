@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chess-app
+  namespace: llm-chess-bot
+  labels:
+    app: chess-app
+    component: web-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: chess-app
+  template:
+    metadata:
+      labels:
+        app: chess-app
+        component: web-service
+    spec:
+      containers:
+      - name: chess-app
+        image: image-registry.openshift-image-registry.svc:5000/llm-chess-bot/chess-app:latest
+        ports:
+        - containerPort: 5000
+          name: http
+        env:
+        - name: PORT
+          value: "5000"
+        - name: OLLAMA_HOST
+          value: "http://ollama:11434"
+        - name: FLASK_ENV
+          value: "production"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /board
+            port: 5000
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /board
+            port: 5000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: chess-app
+  namespace: llm-chess-bot
+  labels:
+    app: chess-app
+    component: web-service
+spec:
+  selector:
+    app: chess-app
+  ports:
+  - name: http
+    port: 5000
+    targetPort: 5000
+    protocol: TCP
+  type: ClusterIP
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: chess-app
+  namespace: llm-chess-bot
+  labels:
+    app: chess-app
+    component: web-service
+spec:
+  to:
+    kind: Service
+    name: chess-app
+    weight: 100
+  port:
+    targetPort: 5000
+  wildcardPolicy: None
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

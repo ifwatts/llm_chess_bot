@@ -6,6 +6,6 @@
     "python.analysis.typeCheckingMode": "off",
     "python.analysis.diagnosticMode": "workspace",
     "python.analysis.autoImportCompletions": true,
-    "python.languageServer": "Pylance",
+    "python.languageServer": "None",
     "python.analysis.useLibraryCodeForTypes": true
 }

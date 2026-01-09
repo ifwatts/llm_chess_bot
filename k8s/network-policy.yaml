@@ -1,0 +1,91 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: llm-chess-bot-network-policy
+  namespace: llm-chess-bot
+  labels:
+    app: llm-chess-bot
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow traffic from anywhere to the chess-app on port 5000
+  - from: []
+    ports:
+    - protocol: TCP
+      port: 5000
+  # Allow traffic from chess-app to ollama on port 11434
+  - from:
+    - podSelector:
+        matchLabels:
+          app: chess-app
+    ports:
+    - protocol: TCP
+      port: 11434
+  # Allow traffic from OpenShift ingress controllers
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          network.openshift.io/policy-group: ingress
+    ports:
+    - protocol: TCP
+      port: 5000
+  # Allow traffic from monitoring systems
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: openshift-monitoring
+    ports:
+    - protocol: TCP
+      port: 5000
+    - protocol: TCP
+      port: 11434
+  egress:
+  # Allow DNS resolution
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+  # Allow HTTPS traffic for model downloads and updates
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+  # Allow HTTP traffic for model downloads
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 80
+  # Allow traffic between chess-app and ollama
+  - to:
+    - podSelector:
+        matchLabels:
+          app: ollama
+    ports:
+    - protocol: TCP
+      port: 11434
+  # Allow traffic from ollama to chess-app (if needed)
+  - to:
+    - podSelector:
+        matchLabels:
+          app: chess-app
+    ports:
+    - protocol: TCP
+      port: 5000
+  # Allow traffic to OpenShift internal services
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: openshift-image-registry
+    ports:
+    - protocol: TCP
+      port: 5000
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: openshift-ingress
+    ports:
+    - protocol: TCP
+      port: 443
