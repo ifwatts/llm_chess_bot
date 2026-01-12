@@ -58,6 +58,39 @@ spec:
     ports:
     - protocol: TCP
       port: 80
+  # Allow traffic to GitHub (using broader CIDR ranges)
+  - to:
+    - ipBlock:
+        cidr: 140.82.112.0/20
+    - ipBlock:
+        cidr: 185.199.108.0/22
+    - ipBlock:
+        cidr: 185.199.109.0/22
+    - ipBlock:
+        cidr: 185.199.110.0/22
+    - ipBlock:
+        cidr: 185.199.111.0/22
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 80
+  # Allow traffic to Docker Hub (using broader CIDR ranges)
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 80
+  # Allow traffic to OpenShift API server
+  - to:
+    - ipBlock:
+        cidr: 172.30.0.1/32
+    ports:
+    - protocol: TCP
+      port: 443
   # Allow traffic between chess-app and ollama
   - to:
     - podSelector:

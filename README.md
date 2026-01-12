@@ -117,6 +117,13 @@ OCP_API_URL=https://api.your-cluster.com:6443
 OCP_USERNAME=your-username
 OCP_PASSWORD=your-password
 OCP_SKIP_TLS_VERIFY=true
+
+# Optional: Custom GitHub repository URL (if different from git remote)
+GITHUB_REPO_URL=https://github.com/yourusername/llm_chess_bot.git
+
+# Optional: Docker Hub credentials (required for Ollama image pulls)
+DOCKER_HUB_USERNAME=your-dockerhub-username
+DOCKER_HUB_PASSWORD=your-dockerhub-token-or-password
 ```
 
 **Note:** Replace the values with your actual cluster details. The `OCP_SKIP_TLS_VERIFY=true` is useful for development clusters with self-signed certificates.
@@ -136,7 +143,8 @@ chmod +x deploy-ocp.sh
 The script will:
 - Login to your OpenShift cluster
 - Create a dedicated namespace (`llm-chess-bot`)
-- Build and push container images to the internal registry
+- Pre-pull base images to avoid Docker Hub rate limits
+- Build and push container images from GitHub main branch to the internal registry
 - Deploy the chess application and Ollama service
 - Configure network policies for secure access
 - Pull the llama2 model
@@ -469,7 +477,9 @@ llm_chess_bot/
 #### Build Failures
 - **Check build logs**: `oc get builds -n llm-chess-bot` and `oc logs build/<build-name>`
 - **Registry access**: Ensure you have permissions to push to the internal registry
+- **Docker Hub auth**: Add `DOCKER_HUB_USERNAME` and `DOCKER_HUB_PASSWORD` to `.env` file
 - **Dockerfile**: Verify Dockerfile syntax and dependencies
+- **Rate limits**: Use Docker Hub credentials to avoid anonymous pull limits
 
 #### Pod Issues
 - **Check pod status**: `oc get pods -n llm-chess-bot`

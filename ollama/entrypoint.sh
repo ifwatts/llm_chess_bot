@@ -1,6 +1,10 @@
 #!/bin/bash
 set -e
 
+# Set OLLAMA_MODELS to use /tmp which is writable
+export OLLAMA_MODELS="/tmp/ollama"
+mkdir -p $OLLAMA_MODELS
+
 # Start Ollama server
 ollama serve &
 

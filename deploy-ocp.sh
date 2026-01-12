@@ -30,6 +30,7 @@ OLLAMA_NAME="ollama"
 NAMESPACE="${PROJECT_NAME}"
 APP_PORT=5000
 OLLAMA_PORT=11434
+GITHUB_REPO_URL="${GITHUB_REPO_URL:-}"  # Can be set in .env file
 
 # Functions
 log_info() {
@@ -107,88 +108,164 @@ create_namespace() {
 }
 
 create_docker_config_secret() {
-    log_info "Creating Docker registry secret (if needed)"
+    log_info "Creating Docker registry secrets (if needed)"
     
-    # This is a placeholder for internal registry access
-    # Adjust based on your specific registry requirements
+    # Create secret for internal OpenShift registry
     if ! oc get secret llm-chess-bot-pull-secret &> /dev/null; then
         oc create secret docker-registry llm-chess-bot-pull-secret \
             --docker-server=image-registry.openshift-image-registry.svc:5000 \
             --docker-username=$(oc whoami) \
             --docker-password=$(oc whoami -t) \
             --namespace=$NAMESPACE
-        log_success "Docker registry secret created"
+        log_success "OpenShift registry secret created"
     else
-        log_warning "Docker registry secret already exists"
+        log_warning "OpenShift registry secret already exists"
     fi
+    
+    # Create secret for Docker Hub (needed for Ollama image)
+    if ! oc get secret docker-hub-secret &> /dev/null; then
+        log_info "Creating Docker Hub pull secret..."
+        log_warning "Note: You'll need Docker Hub credentials for pulling ollama/ollama image"
+        
+        # Check if Docker Hub credentials are provided in environment
+        if [ -n "$DOCKER_HUB_USERNAME" ] && [ -n "$DOCKER_HUB_PASSWORD" ]; then
+            oc create secret docker-registry docker-hub-secret \
+                --docker-server=docker.io \
+                --docker-username=$DOCKER_HUB_USERNAME \
+                --docker-password=$DOCKER_HUB_PASSWORD \
+                --namespace=$NAMESPACE
+            log_success "Docker Hub secret created from environment variables"
+        else
+            log_warning "Docker Hub credentials not found in environment"
+            log_info "Add these to your .env file:"
+            echo "DOCKER_HUB_USERNAME=your-dockerhub-username"
+            echo "DOCKER_HUB_PASSWORD=your-dockerhub-token-or-password"
+            log_info "Or use anonymous pulls (may hit rate limits)"
+        fi
+    else
+        log_warning "Docker Hub secret already exists"
+    fi
+    
+    # Create secret for custom external registry (if configured)
+    if [ -n "$CUSTOM_REGISTRY_USERNAME" ] && [ -n "$CUSTOM_REGISTRY_PASSWORD" ] && [ -n "$DOCKER_REGISTRY_URL" ]; then
+        if ! oc get secret custom-registry-secret &> /dev/null; then
+            log_info "Creating custom registry pull secret..."
+            oc create secret docker-registry custom-registry-secret \
+                --docker-server=$DOCKER_REGISTRY_URL \
+                --docker-username=$CUSTOM_REGISTRY_USERNAME \
+                --docker-password=$CUSTOM_REGISTRY_PASSWORD \
+                --namespace=$NAMESPACE
+            log_success "Custom registry secret created"
+        else
+            log_warning "Custom registry secret already exists"
+        fi
+    fi
+    
+    # Link secrets to service account
+    log_info "Linking secrets to service account..."
+    oc secrets link default llm-chess-bot-pull-secret -n $NAMESPACE || true
+    oc secrets link default docker-hub-secret -n $NAMESPACE || true
+    oc secrets link default custom-registry-secret -n $NAMESPACE || true
+    oc secrets link builder llm-chess-bot-pull-secret -n $NAMESPACE || true
+    oc secrets link builder docker-hub-secret -n $NAMESPACE || true
+    oc secrets link builder custom-registry-secret -n $NAMESPACE || true
 }
 
-pre_pull_base_images() {
-    log_info "Pre-pulling base images to avoid rate limits..."
+process_deployment_templates() {
+    log_info "Processing deployment templates..."
     
-    # Pull Python base image for chess app
-    log_info "Pulling Python base image..."
-    if ! oc image mirror registry.access.redhat.com/ubi8/python-311:latest image-registry.openshift-image-registry.svc:5000/$NAMESPACE/python-311:latest -n $NAMESPACE; then
-        log_warning "Failed to mirror Python base image, will try direct pull during build"
+    # Check if using external registry
+    if [ "$INTERNAL_REGISTRY" = "false" ]; then
+        log_info "Using external registry configuration"
+        
+        # Validate required external registry variables
+        if [ -z "$DOCKER_REGISTRY_URL" ] || [ -z "$CHESS_APP_IMAGE" ] || [ -z "$OLLAMA_IMAGE" ]; then
+            log_error "External registry mode requires DOCKER_REGISTRY_URL, CHESS_APP_IMAGE, and OLLAMA_IMAGE variables"
+            exit 1
+        fi
+        
+        # Process templates with envsubst
+        log_info "Processing chess-app deployment template..."
+        envsubst < k8s/chess-app-deployment-template.yaml > k8s/chess-app-deployment.yaml
+        log_success "Chess app deployment processed"
+        
+        log_info "Processing ollama deployment template..."
+        envsubst < k8s/ollama-deployment-template.yaml > k8s/ollama-deployment.yaml
+        log_success "Ollama deployment processed"
+    else
+        log_info "Using internal OpenShift registry (default)"
+        # Use existing deployment files
+        cp k8s/chess-app-deployment.yaml k8s/chess-app-deployment.yaml.bak
+        cp k8s/ollama-deployment.yaml k8s/ollama-deployment.yaml.bak
     fi
-    
-    # Pull Ollama base image
-    log_info "Pulling Ollama base image..."
-    if ! oc image mirror docker.io/ollama/ollama:latest image-registry.openshift-image-registry.svc:5000/$NAMESPACE/ollama-base:latest -n $NAMESPACE; then
-        log_warning "Failed to mirror Ollama base image, will try direct pull during build"
-    fi
-    
-    log_success "Base image mirroring completed"
 }
 
 build_and_push_images() {
-    log_info "Building container images using OpenShift internal registry"
+    # Skip building if using external registry
+    if [ "$INTERNAL_REGISTRY" = "false" ]; then
+        log_info "Using external registry - skipping image build process"
+        log_info "Images will be pulled from: $DOCKER_REGISTRY_URL"
+        return 0
+    fi
     
-    # Pre-pull base images to avoid rate limits
-    pre_pull_base_images
+    log_info "Building container images using OpenShift internal registry from GitHub main branch"
     
-    # Build chess-app image using OCP's internal build system
-    log_info "Building chess-app image with OpenShift BuildConfig..."
+    # Get GitHub repository URL from environment variable or git remote
+    local git_repo_url="$GITHUB_REPO_URL"
+    if [ -z "$git_repo_url" ]; then
+        git_repo_url=$(git config --get remote.origin.url 2>/dev/null || echo "https://github.com/yourusername/llm_chess_bot.git")
+    fi
+    log_info "Using repository: $git_repo_url"
+    
+    # Build chess-app image using GitHub source
+    log_info "Building chess-app image from GitHub main branch..."
     
     # Create BuildConfig for chess-app if it doesn't exist
     if ! oc get buildconfig $APP_NAME -n $NAMESPACE &> /dev/null; then
         oc new-build \
             --name=$APP_NAME \
-            --binary \
             --strategy=docker \
-            --to=image-registry.openshift-image-registry.svc:5000/$NAMESPACE/$APP_NAME:latest \
+            --image=python:3.11-alpine \
+            $git_repo_url \
+            --to=chess-app:latest \
             -n $NAMESPACE
         log_success "BuildConfig for $APP_NAME created"
     else
         log_warning "BuildConfig for $APP_NAME already exists"
     fi
     
-    # Start binary build for chess-app
-    log_info "Starting binary build for $APP_NAME..."
-    if ! oc start-build $APP_NAME --from-dir=. --follow -n $NAMESPACE; then
+    # Start build from GitHub main branch
+    log_info "Starting build for $APP_NAME from main branch..."
+    if ! oc start-build $APP_NAME --follow -n $NAMESPACE; then
         log_error "Chess app build failed"
         return 1
     fi
     
-    # Build ollama image using OCP's internal build system
-    log_info "Building ollama image with OpenShift BuildConfig..."
+    # Build ollama image using GitHub source
+    log_info "Building ollama image from GitHub main branch..."
     
     # Create BuildConfig for ollama if it doesn't exist
     if ! oc get buildconfig $OLLAMA_NAME -n $NAMESPACE &> /dev/null; then
         oc new-build \
             --name=$OLLAMA_NAME \
-            --binary \
             --strategy=docker \
-            --to=image-registry.openshift-image-registry.svc:5000/$NAMESPACE/$OLLAMA_NAME:latest \
+            --image=ollama/ollama:latest \
+            $git_repo_url \
+            --context-dir=./ollama \
+            --to=ollama:latest \
             -n $NAMESPACE
         log_success "BuildConfig for $OLLAMA_NAME created"
+        
+        # Remove the imageChange trigger to prevent infinite build loops
+        oc patch buildconfig $OLLAMA_NAME -n $NAMESPACE --type='json' -p='[{"op": "remove", "path": "/spec/triggers/3"}]' || true
+        log_success "Removed problematic imageChange trigger from $OLLAMA_NAME BuildConfig"
     else
         log_warning "BuildConfig for $OLLAMA_NAME already exists"
     fi
     
-    # Start binary build for ollama
-    log_info "Starting binary build for $OLLAMA_NAME..."
-    if ! oc start-build $OLLAMA_NAME --from-dir=./ollama --follow -n $NAMESPACE; then
+    # Start build for ollama from GitHub main branch
+    log_info "Starting build for $OLLAMA_NAME from main branch..."
+    if ! oc start-build $OLLAMA_NAME --follow -n $NAMESPACE; then
         log_error "Ollama build failed"
         return 1
     fi
@@ -270,6 +347,16 @@ get_app_url() {
         local app_url="https://$route_url"
         log_success "Application is accessible at: $app_url"
         echo "$app_url"
+        
+        # Extract and display router certificate for import
+        extract_router_cert
+        
+        echo ""
+        log_info "SSL Certificate Options:"
+        echo "• Accept risk in browser (Advanced → Proceed to unsafe)"
+        echo "• Import certificate using command above"
+        echo "• Use HTTP URL as temporary workaround: http://$route_url"
+        echo ""
     else
         log_warning "Route not found, checking for LoadBalancer service..."
         local lb_url=$(oc get svc $APP_NAME -n $NAMESPACE -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "")
@@ -281,6 +368,85 @@ get_app_url() {
             log_error "Could not determine application URL"
             echo ""
         fi
+    fi
+}
+
+extract_router_cert() {
+    log_info "Extracting router certificate for browser import..."
+    
+    # Try to get router certificate from OpenShift
+    local cert_file="llm-chess-bot-router-cert.crt"
+    local cert_extracted=false
+    
+    # Try different certificate secrets in openshift-ingress
+    for secret_name in "router-certs-default" "router-ca" "router-metrics-certs-default"; do
+        if oc get secret $secret_name -n openshift-ingress &> /dev/null; then
+            log_info "Found certificate secret: $secret_name"
+            
+            # Extract certificate to a file
+            oc get secret $secret_name -n openshift-ingress -o jsonpath='{.data.tls\.crt}' | \
+                base64 -d > "$cert_file" 2>/dev/null
+            
+            if [ -f "$cert_file" ] && [ -s "$cert_file" ]; then
+                log_success "Certificate saved to: $cert_file"
+                cert_extracted=true
+                
+                # Verify certificate
+                if openssl x509 -in "$cert_file" -checkend 0 -noout 2>/dev/null; then
+                    log_info "Certificate is valid"
+                    
+                    # Show certificate details
+                    echo ""
+                    echo "Certificate Details:"
+                    openssl x509 -in "$cert_file" -noout -subject -dates 2>/dev/null | sed 's/^/  /'
+                    echo ""
+                    
+                    echo "To import this certificate:"
+                    echo "1. Chrome/Edge: Settings → Privacy/Security → Manage certificates → Import → Browse files"
+                    echo "2. Firefox: Settings → Privacy & Security → Certificates → View Certificates → Import"
+                    echo "3. Safari: Keychain Access → Certificate Assistant → Import"
+                    echo ""
+                    echo "After import, restart browser and visit: https://$route_url"
+                    echo ""
+                    echo "Alternative: Accept SSL risk in browser (Advanced → Proceed to unsafe)"
+                    break
+                else
+                    log_warning "Certificate is invalid or expired"
+                    rm -f "$cert_file"
+                fi
+            fi
+        fi
+    done
+    
+    # Try alternative certificate locations
+    if [ "$cert_extracted" = false ]; then
+        log_warning "Router certificate not found in openshift-ingress namespace"
+        
+        for ns in "openshift-config openshift-master default"; do
+            for secret_name in "router-certs-default" "router-ca" "router-metrics-certs-default"; do
+                if oc get secret $secret_name -n $ns &> /dev/null; then
+                    log_info "Found certificate in namespace: $ns"
+                    oc get secret $secret_name -n $ns -o jsonpath='{.data.tls\.crt}' | \
+                        base64 -d > "$cert_file" 2>/dev/null
+                    
+                    if [ -f "$cert_file" ] && [ -s "$cert_file" ]; then
+                        log_success "Certificate saved to: $cert_file"
+                        cert_extracted=true
+                        break 2
+                    fi
+                fi
+            done
+        done
+    fi
+    
+    if [ "$cert_extracted" = false ]; then
+        log_warning "No router certificate found. You may need to accept the SSL risk in browser."
+        echo ""
+        echo "Manual certificate extraction:"
+        echo "1. Open: https://$route_url"
+        echo "2. Click the lock icon in browser address bar"
+        echo "3. View certificate → Export/Save as .crt file"
+        echo "4. Import the saved certificate into your browser"
     fi
 }
 
@@ -325,6 +491,10 @@ main() {
     create_docker_config_secret
     echo ""
     
+    # Process deployment templates
+    process_deployment_templates
+    echo ""
+    
     # Build and push images
     build_and_push_images
     echo ""
@@ -367,7 +537,29 @@ main() {
     echo "  View Ollama logs: oc logs -f deployment/$OLLAMA_NAME -n $NAMESPACE"
     echo "  Get shell:        oc exec -it deployment/$APP_NAME -n $NAMESPACE -- bash"
     echo "  Delete deployment: oc delete namespace $NAMESPACE"
+    echo "  Re-run deployment: ./deploy-ocp.sh"
     echo ""
+    log_info "SSL Certificate Setup:"
+    echo "========================"
+    echo ""
+    log_info "The application uses a self-signed SSL certificate."
+    echo "To resolve browser security warnings:"
+    echo ""
+    echo "1. Run SSL setup script:"
+    echo "   ./setup-ssl.sh"
+    echo ""
+    echo "2. Or accept SSL risk in browser (Advanced → Proceed to unsafe)"
+    echo ""
+    echo "3. Or use HTTP URL: http://$route_url"
+    echo ""
+    echo "Certificate file already extracted: llm-chess-bot-router-cert.crt"
+    echo ""
+    
+    # Run SSL verification
+    if command -v ./verify-ssl.sh &> /dev/null; then
+        log_info "Running SSL verification..."
+        ./verify-ssl.sh | tail -10
+    fi
 }
 
 # Handle cleanup on exit
