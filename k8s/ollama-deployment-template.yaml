@@ -21,9 +21,10 @@ spec:
       imagePullSecrets:
       - name: llm-chess-bot-pull-secret
       - name: docker-hub-secret
+      - name: custom-registry-secret
       containers:
       - name: ollama
-        image: image-registry.openshift-image-registry.svc:5000/llm-chess-bot/ollama:latest
+        image: ${OLLAMA_IMAGE:-image-registry.openshift-image-registry.svc:5000/llm-chess-bot/ollama:latest}
         ports:
         - containerPort: 11434
           name: http

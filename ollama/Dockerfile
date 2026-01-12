@@ -1,8 +1,12 @@
-# Try to use internal registry first, fallback to public registry
-FROM image-registry.openshift-image-registry.svc:5000/llm-chess-bot/ollama-base:latest
+FROM ollama/ollama:latest
 
 # Expose Ollama API port
 EXPOSE 11434
+
+# Set CPU-only mode environment variable
+ENV OLLAMA_GPU=0
+ENV OLLAMA_MAX_LOADED_MODELS=1
+ENV OLLAMA_NUM_PARALLEL=1
 
 # Copy entrypoint script
 COPY entrypoint.sh /entrypoint.sh

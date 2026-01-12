@@ -1,5 +1,5 @@
 const chessboard = document.getElementById('chessboard');
-const API_URL = 'http://localhost:5001';
+const API_URL = ''; // Use relative URL since frontend and backend are served from same domain
 const BOARD_SIZE = 8;
 const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
 const RANKS = ['1', '2', '3', '4', '5', '6', '7', '8'];

@@ -20,9 +20,10 @@ spec:
       imagePullSecrets:
       - name: llm-chess-bot-pull-secret
       - name: docker-hub-secret
+      - name: custom-registry-secret
       containers:
       - name: chess-app
-        image: image-registry.openshift-image-registry.svc:5000/llm-chess-bot/chess-app:latest
+        image: ${CHESS_APP_IMAGE:-image-registry.openshift-image-registry.svc:5000/llm-chess-bot/chess-app:latest}
         ports:
         - containerPort: 5000
           name: http
@@ -81,14 +82,13 @@ metadata:
     app: chess-app
     component: web-service
 spec:
-  host: chess-app-llm-chess-bot.apps.aiops-dev-prod.cp.fyre.ibm.com
-  port:
-    targetPort: 5000
-  tls:
-    termination: edge
-    insecureEdgeTerminationPolicy: Redirect
   to:
     kind: Service
     name: chess-app
     weight: 100
+  port:
+    targetPort: 5000
   wildcardPolicy: None
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
